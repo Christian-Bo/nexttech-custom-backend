@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <RootNamespace>NextTech.Api</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\NextTech.Application\NextTech.Application.csproj" />
+    <ProjectReference Include="..\NextTech.Infrastructure\NextTech.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

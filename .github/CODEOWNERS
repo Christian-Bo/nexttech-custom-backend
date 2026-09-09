@@ -1,0 +1,8 @@
+# IMPORTANTE:
+# Reemplazar @TU_USUARIO_GITHUB por el usuario real del arquitecto.
+# Agregar usuarios backend cuando se definan.
+
+/database/ @TU_USUARIO_GITHUB
+/docs/ @TU_USUARIO_GITHUB
+/deploy/ @TU_USUARIO_GITHUB
+/.github/ @TU_USUARIO_GITHUB

@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>NextTech.Infrastructure</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\NextTech.Domain\NextTech.Domain.csproj" />
+    <ProjectReference Include="..\NextTech.Application\NextTech.Application.csproj" />
+  </ItemGroup>
+</Project>

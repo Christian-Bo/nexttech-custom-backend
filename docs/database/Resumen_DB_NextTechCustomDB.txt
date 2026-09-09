@@ -1,0 +1,91 @@
+NEXTTECHCUSTOMDB - RESUMEN SIMPLE
+
+TABLAS CREADAS
+===============
+
+1. Rol
+2. EstadoOrden
+3. EstadoCarrito
+4. MetodoPago
+5. EstadoPago
+6. ResultadoEntrega
+7. TipoActor
+8. TipoNotificacion
+9. CanalNotificacion
+10. EstadoNotificacion
+11. Archivo
+12. UsuarioInterno
+13. Categoria
+14. Producto
+15. VarianteProducto
+16. Atributo
+17. ValorAtributo
+18. ProductoAtributo
+19. VarianteAtributo
+20. ProductoImagen
+21. ZonaPersonalizacion
+22. PlantillaVarianteZona
+23. AreaEntrega
+24. Personalizacion
+25. PersonalizacionZona
+26. Carrito
+27. DetalleCarrito
+28. Orden
+29. DetalleOrden
+30. Pago
+31. HistorialEstadoOrden
+32. IntentoEntrega
+33. Notificacion
+34. BitacoraAuditoria
+
+
+REGLAS PRINCIPALES APLICADAS
+=============================
+
+- Las claves principales internas usan INT IDENTITY(1,1).
+- Se usan claves foraneas para mantener las relaciones entre tablas.
+- Las relaciones importantes usan ON DELETE NO ACTION para evitar borrar datos historicos.
+- Se usa eliminado logico con Activo = 0 y FechaDesactivacion.
+- Los correos de usuarios internos son unicos.
+- CodigoProducto, CodigoVariante y CodigoOrden son unicos.
+- Un comprador solo puede tener un carrito ACTIVO.
+- Un carrito procesado solo puede generar una orden.
+- Una orden solo puede tener un pago.
+- Una orden solo puede tener un intento de entrega abierto al mismo tiempo.
+- Un producto puede tener varias imagenes, pero solo una principal.
+- Las cantidades deben ser mayores que 0.
+- PrecioBase, Total y Monto deben ser mayores que 0.
+- PrecioAdicional puede ser 0, pero nunca negativo.
+- El subtotal se valida como PrecioUnitario x Cantidad.
+- El PrecioUnitario se valida como PrecioBaseAplicado + PrecioVarianteAplicado.
+- Las fechas finales no pueden ser anteriores a las fechas iniciales.
+- Si QrUtilizado = 1, debe existir FechaUsoQr.
+- Las personalizaciones pueden tener una sola configuracion por zona.
+- Una personalizacion pertenece a una variante especifica.
+- Los campos JSON se guardan en NVARCHAR(MAX) y se validan con ISJSON.
+- Una variante solo puede tener un valor por atributo.
+- Los valores de atributos estan controlados para evitar combinaciones incorrectas.
+- El comprador no se guarda directamente en SQL Server; se referencia con IdCompradorExterno porque viene de Oracle.
+- En la orden se guarda un snapshot del nombre, correo y telefono del comprador.
+- Los precios historicos de la compra se guardan en DetalleOrden.
+- Las contrasenas de usuarios internos se guardan como PasswordHash, nunca en texto plano.
+- Se guarda historial de estados de las ordenes.
+- Se guarda bitacora de auditoria para acciones importantes.
+- Se manejan catalogos fijos para roles, estados, metodos de pago, resultados de entrega y notificaciones.
+- No se utilizaron triggers, procedimientos almacenados ni funciones de negocio en SQL.
+- La logica de negocio compleja se deja para el backend.
+
+
+FORMA SENCILLA DE EXPLICARLO
+============================
+
+La base NextTechCustomDB fue creada en SQL Server y esta dividida por modulos:
+usuarios internos, catalogo, productos, atributos, personalizacion, carrito,
+ordenes, pagos, entregas, notificaciones y auditoria.
+
+Se aplicaron reglas de integridad como claves primarias, claves foraneas,
+restricciones UNIQUE, CHECK, indices y eliminado logico.
+
+La base protege los datos historicos y evita duplicados o registros invalidos.
+Los compradores se obtienen desde una base Oracle externa y en SQL Server solo
+se guarda su identificador y los datos necesarios para las compras.

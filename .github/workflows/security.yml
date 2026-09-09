@@ -1,0 +1,25 @@
+name: Backend Dependency Security
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 12 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  vulnerable-packages:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - run: dotnet restore NextTech.sln
+      - name: List vulnerable dependencies
+        run: dotnet list NextTech.sln package --vulnerable --include-transitive

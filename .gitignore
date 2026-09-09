@@ -1,0 +1,39 @@
+# Build
+**/bin/
+**/obj/
+artifacts/
+TestResults/
+coverage/
+*.coverage
+*.trx
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# Secrets / environment
+.env
+.env.*
+!.env.example
+appsettings.Local.json
+secrets.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Database local files
+*.mdf
+*.ldf
+*.bak
+
+# Temporary
+tmp/
+temp/
