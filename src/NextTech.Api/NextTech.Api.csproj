@@ -2,8 +2,13 @@
   <PropertyGroup>
     <RootNamespace>NextTech.Api</RootNamespace>
   </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\NextTech.Application\NextTech.Application.csproj" />
     <ProjectReference Include="..\NextTech.Infrastructure\NextTech.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Swashbuckle.AspNetCore" />
   </ItemGroup>
 </Project>

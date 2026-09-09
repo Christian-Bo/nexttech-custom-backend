@@ -1,31 +1,36 @@
 # Oracle central
 
-Oracle es un sistema externo/central compartido.
+Oracle es una base externa compartida.
 
-El backend debe consultar allí los compradores y sus datos centrales.
-
-Datos confirmados relevantes del usuario central:
-
-- `ID_USUARIO`
-- `CORREO`
-- `TELEFONO`
-- `FECHA_NACIMIENTO`
-- `NICKNAME`
-- `PASSWORD_HASH`
-- `TOKEN_QR_HASH`
-- `NOTIFICA_EMAIL`
-- `NOTIFICA_WHATSAPP`
-- controles centrales de acceso/bloqueo
-
-## Mapeo hacia SQL Server
+Conexión actual:
 
 ```text
-Oracle.USUARIO.ID_USUARIO -> IdCompradorExterno
-Oracle.USUARIO.NICKNAME    -> NicknameCompradorAplicado (snapshot en Orden)
-Oracle.USUARIO.CORREO      -> CorreoCompradorAplicado
-Oracle.USUARIO.TELEFONO    -> TelefonoCompradorAplicado
+Host: www.server.daossystem.pro
+Puerto: 5626
+Servicio: XEPDB1
+Usuario: TIENDA_APP
 ```
 
-No crear FK entre bases y no duplicar la tabla de compradores en NextTechCustomDB.
+La contraseña NO se documenta aquí.
 
-No colocar credenciales Oracle en este repositorio.
+Cadena:
+
+```text
+User Id=TIENDA_APP;Password=<PASSWORD>;Data Source=www.server.daossystem.pro:5626/XEPDB1;
+```
+
+## Campos utilizados por NextTech
+
+De `TIENDA_APP.USUARIO` se mapean inicialmente:
+
+- ID_USUARIO
+- CORREO
+- TELEFONO
+- FECHA_NACIMIENTO
+- NICKNAME
+- NOTIFICA_EMAIL
+- NOTIFICA_WHATSAPP
+
+No duplicar el comprador completo en SQL Server.
+
+Oracle se trata como **solo lectura** desde este backend.

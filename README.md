@@ -1,83 +1,77 @@
-# NextTech Backend
+# NextTech Custom Backend
 
-API de **NextTech Custom** construida como **monolito modular** con ASP.NET Core 8.
+Backend inicial del proyecto universitario **NextTech Custom**.
 
 ## Arquitectura
 
+**Monolito modular** con ASP.NET Core 8:
+
 ```text
 NextTech.Api
-    ↓
+        ↓
 NextTech.Application
-    ↓
+        ↓
 NextTech.Domain
 
 NextTech.Infrastructure
-    ↘ SQL Server: NextTechCustomDB
-    ↘ Oracle: usuarios/compradores centrales
-    ↘ Pagos / correo / WhatsApp / PDF / QR
+   ├── SQL Server / NextTechCustomDB
+   ├── Oracle central
+   ├── autenticación
+   └── integraciones externas
 ```
 
-El backend es **una sola API desplegable**, pero el código está separado por módulos funcionales.
+## Empieza aquí
 
-## Bases de datos
-
-- **SQL Server / NextTechCustomDB:** catálogo, carrito, personalización, órdenes, pagos, entregas, notificaciones, auditoría y usuarios internos.
-- **Oracle central:** compradores, autenticación de compradores, QR del comprador, preferencias de notificación y datos centrales.
-
-Nunca se debe crear una FK física entre SQL Server y Oracle. En SQL Server se utiliza `IdCompradorExterno`.
-
-## Primeros pasos
-
-1. Instalar .NET SDK 8.
-2. Copiar `.env.example` a un archivo local de variables de entorno o configurar User Secrets.
-3. Levantar SQL Server o conectarse a la instancia de desarrollo.
-4. Ejecutar `database/sqlserver/NextTechCustomDB_DBeaver_Nickname.sql` desde DBeaver.
-5. Configurar la conexión Oracle sin subir credenciales al repositorio.
-6. Ejecutar:
-   ```bash
-   dotnet restore NextTech.sln
-   dotnet build NextTech.sln
-   dotnet test NextTech.sln
-   dotnet run --project src/NextTech.Api/NextTech.Api.csproj
-   ```
-7. Verificar:
-   ```text
-   GET /health
-   ```
-
-## Flujo Git
+Lee primero:
 
 ```text
-feature/* ──PR──> develop ──PR de entrega──> main
+START_HERE.md
 ```
 
-- `develop` debe configurarse como rama predeterminada.
-- No hacer push directo a `develop` ni a `main`.
-- Todo PR debe pasar CI.
-- Recomendado: 1 aprobación + conversaciones resueltas + Squash Merge.
+El repositorio ya tiene las conexiones, DbContexts, EF Core, Oracle, JWT,
+Swagger, health checks, CI, Docker y la estructura base para comenzar a
+implementar los módulos.
 
-Ver `docs/WORKFLOW_GIT.md`.
+## Bases
 
-## Reglas importantes
+### SQL Server
 
-- No almacenar contraseñas en texto plano.
-- No duplicar compradores Oracle en SQL Server.
-- No agregar lógica de negocio compleja mediante triggers.
-- Los cambios de estado, pagos, checkout y toma de pedidos deben ejecutarse con transacciones cuando corresponda.
-- Las reglas completas de integración con DB están en `docs/database/Guia_Backend_NextTechCustomDB.docx`.
+`NextTechCustomDB` es la base propia de la tienda. El script oficial está en:
 
-## Módulos
+```text
+database/sqlserver/NextTechCustomDB_DBeaver_Nickname.sql
+```
 
-- Auth
-- OracleIntegration
-- Catalog
-- Personalization
-- Cart
-- Orders
-- Payments
-- Delivery
-- Notifications
-- Audit
-- Dashboard
+### Oracle
 
-Cada módulo contiene un `README.md` con su responsabilidad inicial.
+La cuenta central se consulta desde Oracle y no se duplica en SQL Server.
+
+```text
+Oracle.USUARIO.ID_USUARIO -> IdCompradorExterno
+Oracle.USUARIO.NICKNAME    -> NicknameCompradorAplicado
+Oracle.USUARIO.CORREO      -> CorreoCompradorAplicado
+Oracle.USUARIO.TELEFONO    -> TelefonoCompradorAplicado
+```
+
+Oracle está configurado como **solo lectura** desde NextTech.
+
+## Git
+
+```text
+feature/* -> develop -> main
+```
+
+- `develop` como Default Branch.
+- PR obligatorio.
+- CI obligatorio.
+- 1 aprobación recomendada.
+- Sin push directo a `develop` o `main`.
+
+## Comandos
+
+```bash
+dotnet restore NextTech.sln
+dotnet build NextTech.sln
+dotnet test NextTech.sln
+dotnet run --project src/NextTech.Api/NextTech.Api.csproj
+```

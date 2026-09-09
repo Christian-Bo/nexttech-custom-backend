@@ -28,11 +28,17 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
+
+      # SQL Server se sobrescribe aquí porque el hostname dentro de Docker es "sqlserver".
       ConnectionStrings__SqlServer: "Server=sqlserver,1433;Database=NextTechCustomDB;User Id=sa;Password=${SQLSERVER_SA_PASSWORD};TrustServerCertificate=True;"
-      ConnectionStrings__Oracle: ${ORACLE_CONNECTION}
-      Jwt__Issuer: NextTech
-      Jwt__Audience: NextTech.Client
-      Jwt__Key: ${JWT_SECRET}
+
+      # Por ahora Oracle se lee desde appsettings.json.
+      # Más adelante puedes moverlo a .env descomentando:
+      # ConnectionStrings__Oracle: ${ORACLE_CONNECTION}
+
+      # También puedes mover JWT a .env después:
+      # Jwt__Key: ${JWT_SECRET}
+
     ports:
       - "8080:8080"
     depends_on:
