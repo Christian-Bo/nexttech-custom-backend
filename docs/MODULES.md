@@ -4,6 +4,7 @@ Los módulos iniciales son:
 
 - **Auth:** Login de usuarios internos, cambio de contraseña y autorización relacionada con cuentas SQL Server.
 - **OracleIntegration:** Casos de uso que requieren consultar compradores del Oracle central. No duplicar el usuario central.
+- **FaceBiometrics:** Orquestación de enrolamiento, liveness, verificación facial y segmentación de imagen para carnet mediante la Face API externa.
 - **Catalog:** Categorías, productos, variantes, atributos, imágenes y configuración administrable del catálogo.
 - **Personalization:** Creación/edición/bloqueo de personalizaciones y validación de zonas/configuración JSON.
 - **Cart:** Carrito activo por comprador, detalles, cantidades y personalizaciones asociadas.

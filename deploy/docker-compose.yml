@@ -26,18 +26,40 @@ services:
       dockerfile: deploy/Dockerfile
     container_name: nexttech-api
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
       ASPNETCORE_URLS: http://+:8080
 
-      # SQL Server se sobrescribe aquí porque el hostname dentro de Docker es "sqlserver".
-      ConnectionStrings__SqlServer: "Server=sqlserver,1433;Database=NextTechCustomDB;User Id=sa;Password=${SQLSERVER_SA_PASSWORD};TrustServerCertificate=True;"
+      ConnectionStrings__SqlServer: "Server=sqlserver,1433;Database=${SQLSERVER_DATABASE:-NextTechCustomDB};User Id=sa;Password=${SQLSERVER_SA_PASSWORD};TrustServerCertificate=True;Encrypt=True"
+      ConnectionStrings__Oracle: "User Id=${ORACLE_USER};Password=${ORACLE_PASSWORD};Data Source=${ORACLE_DATA_SOURCE};"
 
-      # Por ahora Oracle se lee desde appsettings.json.
-      # Más adelante puedes moverlo a .env descomentando:
-      # ConnectionStrings__Oracle: ${ORACLE_CONNECTION}
+      Jwt__Issuer: ${JWT_ISSUER:-NextTech.Api}
+      Jwt__Audience: ${JWT_AUDIENCE:-NextTech.Client}
+      Jwt__ExpirationMinutes: ${JWT_EXPIRATION_MINUTES:-120}
+      Jwt__Key: ${JWT_SECRET}
 
-      # También puedes mover JWT a .env después:
-      # Jwt__Key: ${JWT_SECRET}
+      AllowedClientOrigins__0: ${FRONTEND_ORIGIN_0}
+      AllowedClientOrigins__1: ${FRONTEND_ORIGIN_1:-}
+      AllowedClientOrigins__2: ${FRONTEND_ORIGIN_2:-}
+      AllowedClientOrigins__3: ${FRONTEND_ORIGIN_3:-}
+
+      Smtp__Enabled: ${SMTP_ENABLED:-false}
+      Smtp__Host: ${SMTP_HOST:-smtp.gmail.com}
+      Smtp__Port: ${SMTP_PORT:-587}
+      Smtp__UserName: ${SMTP_USERNAME:-}
+      Smtp__Password: ${SMTP_PASSWORD:-}
+      Smtp__From: ${SMTP_FROM:-}
+      Smtp__EnableSsl: ${SMTP_ENABLE_SSL:-true}
+      Smtp__TimeoutSeconds: ${SMTP_TIMEOUT_SECONDS:-20}
+      Smtp__RecoveryUrlBase: ${SMTP_RECOVERY_URL_BASE:-}
+
+      FaceApi__BaseUrl: ${FACE_API_BASE_URL:-}
+      FaceApi__EnrollPath: ${FACE_API_ENROLL_PATH:-/api/v1/faces/enroll}
+      FaceApi__SegmentPath: ${FACE_API_SEGMENT_PATH:-/api/v1/faces/segment/image}
+      FaceApi__LivenessPath: ${FACE_API_LIVENESS_PATH:-/api/v1/faces/liveness/challenge}
+      FaceApi__VerifyPath: ${FACE_API_VERIFY_PATH:-/api/v1/faces/verify-template-live}
+      FaceApi__ApiKey: ${FACE_API_KEY:-}
+      FaceApi__ApiKeyHeader: ${FACE_API_KEY_HEADER:-X-Internal-Api-Key}
+      FaceApi__TimeoutSeconds: ${FACE_API_TIMEOUT_SECONDS:-30}
 
     ports:
       - "8080:8080"
