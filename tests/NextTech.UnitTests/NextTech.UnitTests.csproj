@@ -16,5 +16,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\NextTech.Domain\NextTech.Domain.csproj" />
     <ProjectReference Include="..\..\src\NextTech.Application\NextTech.Application.csproj" />
+    <ProjectReference Include="..\..\src\NextTech.Infrastructure\NextTech.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

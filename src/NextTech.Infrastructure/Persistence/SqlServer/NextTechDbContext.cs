@@ -44,6 +44,7 @@ public sealed class NextTechDbContext(DbContextOptions<NextTechDbContext> option
     public DbSet<IntentoEntrega> IntentoEntrega => Set<IntentoEntrega>();
     public DbSet<Notificacion> Notificacion => Set<Notificacion>();
     public DbSet<BitacoraAuditoria> BitacoraAuditoria => Set<BitacoraAuditoria>();
+    public DbSet<BuyerBiometricCredentialEntity> BiometriaComprador => Set<BuyerBiometricCredentialEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
