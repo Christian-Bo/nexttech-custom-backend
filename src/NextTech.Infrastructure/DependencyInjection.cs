@@ -7,12 +7,12 @@ using Microsoft.IdentityModel.Tokens;
 using NextTech.Application.Interfaces;
 using NextTech.Infrastructure.Authentication;
 using NextTech.Infrastructure.Email;
-using NextTech.Infrastructure.Health;
 using NextTech.Infrastructure.Face;
-using NextTech.Infrastructure.Persistence.SqlServer.Repositories;
+using NextTech.Infrastructure.Health;
 using NextTech.Infrastructure.Persistence.Oracle;
 using NextTech.Infrastructure.Persistence.Oracle.Repositories;
 using NextTech.Infrastructure.Persistence.SqlServer;
+using NextTech.Infrastructure.Persistence.SqlServer.Repositories;
 
 namespace NextTech.Infrastructure;
 
