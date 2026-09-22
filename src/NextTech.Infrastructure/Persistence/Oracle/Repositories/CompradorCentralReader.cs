@@ -1,39 +1,56 @@
 using Microsoft.EntityFrameworkCore;
 using NextTech.Application.External;
 using NextTech.Application.Interfaces;
-using NextTech.Infrastructure.Persistence.Oracle.Models;
 
 namespace NextTech.Infrastructure.Persistence.Oracle.Repositories;
 
-public sealed class CompradorCentralReader(OracleDbContext dbContext)
-    : ICompradorCentralReader
+public sealed class CompradorCentralReader(OracleDbContext dbContext) : ICompradorCentralReader
 {
-    public Task<CompradorCentralDto?> ObtenerPorIdAsync(
+    public async Task<CompradorCentralDto?> ObtenerPorIdAsync(
         long idUsuario,
         CancellationToken cancellationToken = default)
-        => Proyectar(dbContext.Usuarios.AsNoTracking().Where(x => x.IdUsuario == idUsuario))
-            .SingleOrDefaultAsync(cancellationToken);
+    {
+        var user = await dbContext.Usuarios
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x => x.IdUsuario == idUsuario, cancellationToken);
 
-    public Task<CompradorCentralDto?> ObtenerPorNicknameAsync(
+        return user is null ? null : ToDto(user);
+    }
+
+    public async Task<CompradorCentralDto?> ObtenerPorNicknameAsync(
         string nickname,
         CancellationToken cancellationToken = default)
-        => Proyectar(dbContext.Usuarios.AsNoTracking().Where(x => x.Nickname == nickname))
-            .SingleOrDefaultAsync(cancellationToken);
+    {
+        var normalized = nickname.Trim().ToLowerInvariant();
+        var user = await dbContext.Usuarios
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Nickname.ToLower() == normalized, cancellationToken);
 
-    public Task<CompradorCentralDto?> ObtenerPorCorreoAsync(
+        return user is null ? null : ToDto(user);
+    }
+
+    public async Task<CompradorCentralDto?> ObtenerPorCorreoAsync(
         string correo,
         CancellationToken cancellationToken = default)
-        => Proyectar(dbContext.Usuarios.AsNoTracking().Where(x => x.Correo == correo))
-            .SingleOrDefaultAsync(cancellationToken);
+    {
+        var normalized = correo.Trim().ToLowerInvariant();
+        var user = await dbContext.Usuarios
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Correo.ToLower() == normalized, cancellationToken);
 
-    private static IQueryable<CompradorCentralDto> Proyectar(
-        IQueryable<UsuarioCentral> query)
-        => query.Select(x => new CompradorCentralDto(
+        return user is null ? null : ToDto(user);
+    }
+
+    private static CompradorCentralDto ToDto(Models.UsuarioCentral x)
+        => new(
             x.IdUsuario,
             x.Correo,
             x.Telefono,
             x.FechaNacimiento,
             x.Nickname,
-            x.NotificaEmail == 1,
-            x.NotificaWhatsApp == 1));
+            IsYes(x.NotificaEmail),
+            IsYes(x.NotificaWhatsApp));
+
+    private static bool IsYes(string? value)
+        => string.Equals(value?.Trim(), "S", StringComparison.OrdinalIgnoreCase);
 }
