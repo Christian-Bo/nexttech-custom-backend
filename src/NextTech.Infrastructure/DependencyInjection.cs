@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using NextTech.Application.Interfaces;
 using NextTech.Infrastructure.Authentication;
+using NextTech.Infrastructure.Credentials;
 using NextTech.Infrastructure.Email;
 using NextTech.Infrastructure.Face;
 using NextTech.Infrastructure.Health;
@@ -13,6 +14,7 @@ using NextTech.Infrastructure.Persistence.Oracle;
 using NextTech.Infrastructure.Persistence.Oracle.Repositories;
 using NextTech.Infrastructure.Persistence.SqlServer;
 using NextTech.Infrastructure.Persistence.SqlServer.Repositories;
+using QuestPDF.Infrastructure;
 
 namespace NextTech.Infrastructure;
 
@@ -39,9 +41,14 @@ public static class DependencyInjection
         services.AddScoped<ICompradorCentralReader, CompradorCentralReader>();
         services.AddScoped<ICentralIdentityGateway, OracleCentralIdentityGateway>();
         services.AddScoped<IInternalAuthRepository, InternalAuthRepository>();
-        services.AddScoped<IBuyerBiometricStore, BuyerBiometricStore>();
+        services.AddScoped<IInternalUserAdministrationRepository, InternalUserAdministrationRepository>();
+        services.AddScoped<IInternalSecurityAuditRepository, InternalSecurityAuditRepository>();
+        services.AddScoped<IBuyerFaceEnrollmentStore, OracleBuyerBiometricStore>();
         services.AddSingleton<IPasswordService, PasswordService>();
         services.AddSingleton<ITokenService, JwtTokenService>();
+
+        QuestPDF.Settings.License = LicenseType.Community;
+        services.AddSingleton<IBuyerCredentialPdfGenerator, BuyerCredentialPdfGenerator>();
 
         services.AddOptions<SmtpOptions>()
             .Bind(configuration.GetSection(SmtpOptions.SectionName))
@@ -60,6 +67,7 @@ public static class DependencyInjection
         services.AddSingleton<SmtpNotificationSender>();
         services.AddSingleton<IRegistrationNotificationSender>(sp => sp.GetRequiredService<SmtpNotificationSender>());
         services.AddSingleton<IRecoveryNotificationSender>(sp => sp.GetRequiredService<SmtpNotificationSender>());
+        services.AddSingleton<IBuyerCredentialNotificationSender>(sp => sp.GetRequiredService<SmtpNotificationSender>());
 
         services.AddOptions<FaceApiOptions>()
             .Bind(configuration.GetSection(FaceApiOptions.SectionName))

@@ -11,6 +11,20 @@ public static class InternalRoles
     public const string Admin = "ADMIN";
     public const string Supervisor = "SUPERVISOR";
     public const string DeliveryDriver = "REPARTIDOR";
+
+    public static readonly IReadOnlySet<string> All = new HashSet<string>(StringComparer.Ordinal)
+    {
+        Admin,
+        Supervisor,
+        DeliveryDriver
+    };
+}
+
+public static class AuditActorIds
+{
+    public const int System = 1;
+    public const int InternalUser = 2;
+    public const int Buyer = 3;
 }
 
 public sealed record AccessTokenResult(

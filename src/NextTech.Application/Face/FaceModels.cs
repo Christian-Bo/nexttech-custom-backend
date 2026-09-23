@@ -35,21 +35,12 @@ public sealed record ProtectedFaceEnrollmentResult(
     int WarningCount,
     string? Message);
 
-public sealed record BuyerBiometricCredential(
+public sealed record BuyerFaceEnrollment(
     long BuyerId,
-    string BiometricTemplate,
-    string TemplateVersion,
-    string TemplateKeyId,
-    string TemplateModel,
-    int TemplateDimensions,
-    string? EmbeddingSha256,
+    FaceImage ReferenceImage,
     byte[] PortraitContent,
     string PortraitContentType,
-    int PortraitWidth,
-    int PortraitHeight,
-    string? PortraitBackground,
-    DateTimeOffset EnrolledAtUtc,
-    DateTimeOffset? UpdatedAtUtc);
+    DateTimeOffset EnrolledAtUtc);
 
 public sealed record FaceEnrollmentResult(
     bool Enrolled,

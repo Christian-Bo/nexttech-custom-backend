@@ -34,7 +34,7 @@ public sealed class BuyerAuthService(
     IPasswordService passwords,
     ITokenService tokens,
     IFaceBiometricService faceBiometrics,
-    IBuyerBiometricStore biometricStore,
+    IBuyerFaceEnrollmentStore enrollmentStore,
     IRegistrationNotificationSender registrationNotifications,
     IRecoveryNotificationSender recoveryNotifications)
 {
@@ -206,15 +206,19 @@ public sealed class BuyerAuthService(
         }
 
         EnsureBuyerCanLogin(buyer);
-        var credential = await biometricStore.GetActiveAsync(buyer.IdUsuario, ct);
-        if (credential is null)
+        var enrollment = await enrollmentStore.GetActiveAsync(buyer.IdUsuario, ct);
+        if (enrollment is null)
         {
             await gateway.RegisterFailedLoginAsync(buyer.IdUsuario, normalizedIdentifier, "FACIAL", "Sin enrolamiento facial", ct);
             throw new AppUnauthorizedException("No fue posible validar el rostro.");
         }
 
+        var transientTemplate = await faceBiometrics.CreateTemplateAsync(
+            enrollment.ReferenceImage,
+            ct);
+
         var result = await faceBiometrics.VerifyTemplateLiveAsync(
-            credential.BiometricTemplate,
+            transientTemplate.BiometricTemplate.Value,
             challengeId.Trim(),
             neutralImage,
             challengeImage,
@@ -280,16 +284,31 @@ public sealed class InternalAuthService(
     private const int MaxFailedAttempts = 5;
     private static readonly TimeSpan Lockout = TimeSpan.FromMinutes(15);
 
-    public async Task<AccessTokenResult> LoginAsync(InternalLoginRequest request, string? ip, CancellationToken ct)
+    public async Task<InternalSessionResult> LoginAsync(InternalLoginRequest request, string? ip, CancellationToken ct)
     {
         var email = request.Email.Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(request.Password))
+            throw new AppValidationException("Correo y contraseña son obligatorios.");
+
         var user = await repository.FindByEmailAsync(email, ct);
-        if (user is null) throw new AppUnauthorizedException();
-        if (!user.Activo) throw new AppForbiddenException("La cuenta interna está desactivada.");
+        if (user is null)
+        {
+            await repository.RegisterUnknownFailedLoginAsync(ip, ct);
+            throw new AppUnauthorizedException();
+        }
+
+        if (!user.Activo)
+        {
+            await repository.RegisterRejectedLoginAsync(user.IdUsuarioInterno, "Cuenta desactivada.", ip, ct);
+            throw new AppForbiddenException("La cuenta interna está desactivada.");
+        }
 
         var now = DateTime.UtcNow;
         if (user.BloqueadoHasta is not null && user.BloqueadoHasta > now)
+        {
+            await repository.RegisterRejectedLoginAsync(user.IdUsuarioInterno, "Cuenta temporalmente bloqueada.", ip, ct);
             throw new AppForbiddenException("La cuenta está temporalmente bloqueada.");
+        }
 
         var check = passwords.Verify(user.PasswordHash, request.Password);
         if (check is not (PasswordCheckResult.Success or PasswordCheckResult.SuccessRehashNeeded))
@@ -301,32 +320,71 @@ public sealed class InternalAuthService(
         }
 
         await repository.RegisterSuccessfulLoginAsync(user.IdUsuarioInterno, ip, ct);
-        if (check == PasswordCheckResult.SuccessRehashNeeded)
-            await repository.ChangePasswordAsync(user.IdUsuarioInterno, passwords.Hash(request.Password), ct);
 
-        var refreshed = await repository.FindByEmailAsync(email, ct) ?? user;
-        return tokens.CreateInternalToken(refreshed);
+        if (check == PasswordCheckResult.SuccessRehashNeeded)
+            await repository.UpgradePasswordHashAsync(user.IdUsuarioInterno, passwords.Hash(request.Password), ct);
+
+        return await CreateSessionAsync(user.IdUsuarioInterno, ct);
     }
 
-    public async Task ChangePasswordAsync(int userId, ChangeInternalPasswordRequest request, CancellationToken ct)
+    public async Task<InternalSessionResult> ChangePasswordAsync(
+        int userId,
+        ChangeInternalPasswordRequest request,
+        string? ip,
+        CancellationToken ct)
     {
         ValidateInternalPassword(request.NewPassword);
+
         var user = await repository.FindByIdAsync(userId, ct)
             ?? throw new AppNotFoundException("Usuario interno no encontrado.");
-        if (!user.Activo) throw new AppForbiddenException("La cuenta interna está desactivada.");
+
+        if (!user.Activo)
+            throw new AppForbiddenException("La cuenta interna está desactivada.");
 
         var current = passwords.Verify(user.PasswordHash, request.CurrentPassword);
         if (current is not (PasswordCheckResult.Success or PasswordCheckResult.SuccessRehashNeeded))
             throw new AppUnauthorizedException("La contraseña actual no es correcta.");
 
-        await repository.ChangePasswordAsync(userId, passwords.Hash(request.NewPassword), ct);
+        var samePassword = passwords.Verify(user.PasswordHash, request.NewPassword);
+        if (samePassword is PasswordCheckResult.Success or PasswordCheckResult.SuccessRehashNeeded)
+            throw new AppValidationException("La nueva contraseña debe ser diferente de la contraseña actual.");
+
+        await repository.ChangePasswordAsync(userId, passwords.Hash(request.NewPassword), ip, ct);
+        return await CreateSessionAsync(userId, ct);
     }
 
-    private static void ValidateInternalPassword(string password)
+    public async Task<InternalUserInfo> GetCurrentUserAsync(int userId, CancellationToken ct)
+    {
+        var user = await repository.FindProfileByIdAsync(userId, ct)
+            ?? throw new AppNotFoundException("Usuario interno no encontrado.");
+
+        if (!user.IsActive)
+            throw new AppForbiddenException("La cuenta interna está desactivada.");
+
+        return user;
+    }
+
+    private async Task<InternalSessionResult> CreateSessionAsync(int userId, CancellationToken ct)
+    {
+        var auth = await repository.FindByIdAsync(userId, ct)
+            ?? throw new AppNotFoundException("Usuario interno no encontrado.");
+        var profile = await repository.FindProfileByIdAsync(userId, ct)
+            ?? throw new AppNotFoundException("Usuario interno no encontrado.");
+        var token = tokens.CreateInternalToken(auth);
+
+        return new InternalSessionResult(
+            token.AccessToken,
+            token.ExpiresAtUtc,
+            token.ActorType,
+            token.MustChangePassword,
+            profile);
+    }
+
+    internal static void ValidateInternalPassword(string password)
     {
         if (string.IsNullOrWhiteSpace(password) || password.Length < 8 || password.Length > 128)
-            throw new AppValidationException("La nueva contraseña debe tener entre 8 y 128 caracteres.");
+            throw new AppValidationException("La contraseña debe tener entre 8 y 128 caracteres.");
         if (!password.Any(char.IsUpper) || !password.Any(char.IsLower) || !password.Any(char.IsDigit))
-            throw new AppValidationException("La nueva contraseña debe incluir mayúscula, minúscula y número.");
+            throw new AppValidationException("La contraseña debe incluir mayúscula, minúscula y número.");
     }
 }
