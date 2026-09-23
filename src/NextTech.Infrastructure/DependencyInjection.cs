@@ -48,6 +48,8 @@ public static class DependencyInjection
         services.AddScoped<ICompradorCentralReader, CompradorCentralReader>();
         services.AddScoped<ICentralIdentityGateway, OracleCentralIdentityGateway>();
         services.AddScoped<IInternalAuthRepository, InternalAuthRepository>();
+        services.AddScoped<IInternalUserAdministrationRepository, InternalUserAdministrationRepository>();
+        services.AddScoped<IInternalSecurityAuditRepository, InternalSecurityAuditRepository>();
         services.AddScoped<IBuyerFaceEnrollmentStore, OracleBuyerBiometricStore>();
         services.AddSingleton<IPasswordService, PasswordService>();
         services.AddSingleton<ITokenService, JwtTokenService>();

@@ -18,9 +18,13 @@ public interface IInternalAuthRepository
 {
     Task<InternalUserAuthRecord?> FindByEmailAsync(string normalizedEmail, CancellationToken ct);
     Task<InternalUserAuthRecord?> FindByIdAsync(int userId, CancellationToken ct);
+    Task<InternalUserInfo?> FindProfileByIdAsync(int userId, CancellationToken ct);
+    Task RegisterUnknownFailedLoginAsync(string? ip, CancellationToken ct);
+    Task RegisterRejectedLoginAsync(int userId, string reason, string? ip, CancellationToken ct);
     Task RegisterFailedLoginAsync(int userId, int newFailedAttempts, DateTime? blockedUntil, string? ip, CancellationToken ct);
     Task RegisterSuccessfulLoginAsync(int userId, string? ip, CancellationToken ct);
-    Task ChangePasswordAsync(int userId, string passwordHash, CancellationToken ct);
+    Task UpgradePasswordHashAsync(int userId, string passwordHash, CancellationToken ct);
+    Task ChangePasswordAsync(int userId, string passwordHash, string? ip, CancellationToken ct);
 }
 
 public interface ICentralIdentityGateway
