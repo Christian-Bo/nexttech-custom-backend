@@ -8,6 +8,7 @@ using NextTech.Api.Configuration;
 using NextTech.Api.Extensions;
 using NextTech.Api.Middleware;
 using NextTech.Application.Modules.Auth;
+using NextTech.Application.Modules.Credentials;
 using NextTech.Application.Modules.Face;
 using NextTech.Infrastructure;
 
@@ -21,6 +22,7 @@ builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddScoped<BuyerAuthService>();
 builder.Services.AddScoped<InternalAuthService>();
+builder.Services.AddScoped<BuyerCredentialService>();
 builder.Services.AddScoped<FaceApplicationService>();
 builder.Services.AddNextTechAuthorization();
 
@@ -117,6 +119,17 @@ builder.Services.AddRateLimiter(options =>
                 QueueLimit = 0,
                 AutoReplenishment = true
             }));
+
+    options.AddPolicy("credential", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: GetBuyerOrClientPartitionKey(httpContext),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 3,
+                Window = TimeSpan.FromMinutes(10),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
 });
 
 builder.Services.AddEndpointsApiExplorer();
@@ -169,8 +182,8 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseCors("Frontend");
-app.UseRateLimiter();
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
 
 app.MapControllers();
@@ -213,5 +226,13 @@ app.Run();
 
 static string GetClientPartitionKey(HttpContext context)
     => context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+static string GetBuyerOrClientPartitionKey(HttpContext context)
+{
+    var buyerId = context.User.FindFirst("buyer_id")?.Value;
+    return !string.IsNullOrWhiteSpace(buyerId)
+        ? $"buyer:{buyerId}"
+        : $"client:{GetClientPartitionKey(context)}";
+}
 
 public partial class Program { }

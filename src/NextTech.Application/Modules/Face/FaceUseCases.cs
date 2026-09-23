@@ -8,7 +8,7 @@ namespace NextTech.Application.Modules.Face;
 public sealed class FaceApplicationService(
     ICentralIdentityGateway gateway,
     IFaceBiometricService biometrics,
-    IBuyerBiometricStore biometricStore)
+    IBuyerFaceEnrollmentStore enrollmentStore)
 {
     public async Task<FaceChallengeResult> CreateChallengeAsync(long buyerId, CancellationToken ct)
     {
@@ -29,8 +29,9 @@ public sealed class FaceApplicationService(
         ValidateChallengeRequest(challengeId, neutralImage, challengeImage);
         var buyer = await GetActiveBuyerAsync(buyerId, ct);
 
-        // The provider is stateless with respect to NextTech buyers. Create the protected
-        // template in memory, verify liveness + identity, and persist only after success.
+        // The provider is stateless for NextTech buyers. The protected template is used
+        // only for this verification and is intentionally not persisted because the
+        // shared Oracle schema stores the buyer's original and processed photographs.
         var enrollment = await biometrics.CreateTemplateAsync(neutralImage, ct);
         var verification = await biometrics.VerifyTemplateLiveAsync(
             enrollment.BiometricTemplate.Value,
@@ -42,29 +43,22 @@ public sealed class FaceApplicationService(
         EnsureAuthenticated(verification, "No se superó la validación de presencia activa e identidad facial.");
 
         var now = DateTimeOffset.UtcNow;
-        var stored = await biometricStore.UpsertAsync(new BuyerBiometricCredential(
-            buyer.IdUsuario,
-            enrollment.BiometricTemplate.Value,
-            enrollment.BiometricTemplate.Version,
-            enrollment.BiometricTemplate.KeyId,
-            enrollment.BiometricTemplate.Model,
-            enrollment.BiometricTemplate.Dimensions,
-            enrollment.BiometricTemplate.EmbeddingSha256,
-            enrollment.Portrait.Content,
-            enrollment.Portrait.ContentType,
-            enrollment.Portrait.Width,
-            enrollment.Portrait.Height,
-            enrollment.Portrait.Background,
-            now,
-            null), ct);
+        await enrollmentStore.UpsertAsync(
+            new BuyerFaceEnrollment(
+                buyer.IdUsuario,
+                neutralImage,
+                enrollment.Portrait.Content,
+                enrollment.Portrait.ContentType,
+                now),
+            ct);
 
         return new FaceEnrollmentResult(
             true,
-            stored.TemplateVersion,
-            stored.TemplateModel,
-            stored.PortraitWidth,
-            stored.PortraitHeight,
-            stored.EnrolledAtUtc,
+            enrollment.BiometricTemplate.Version,
+            enrollment.BiometricTemplate.Model,
+            enrollment.Portrait.Width,
+            enrollment.Portrait.Height,
+            now,
             enrollment.Message);
     }
 
@@ -77,11 +71,13 @@ public sealed class FaceApplicationService(
     {
         ValidateChallengeRequest(challengeId, neutralImage, challengeImage);
         var buyer = await GetActiveBuyerAsync(buyerId, ct);
-        var credential = await biometricStore.GetActiveAsync(buyer.IdUsuario, ct)
+        var enrollment = await enrollmentStore.GetActiveAsync(buyer.IdUsuario, ct)
             ?? throw new AppConflictException("El comprador todavía no tiene enrolamiento facial activo.");
 
+        var transientTemplate = await biometrics.CreateTemplateAsync(enrollment.ReferenceImage, ct);
+
         return await biometrics.VerifyTemplateLiveAsync(
-            credential.BiometricTemplate,
+            transientTemplate.BiometricTemplate.Value,
             challengeId.Trim(),
             neutralImage,
             challengeImage,

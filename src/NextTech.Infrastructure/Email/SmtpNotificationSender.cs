@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Mail;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using NextTech.Application.Credentials;
 using NextTech.Application.Interfaces;
 
 namespace NextTech.Infrastructure.Email;
@@ -10,7 +11,8 @@ public sealed class SmtpNotificationSender(
     IOptions<SmtpOptions> options,
     ILogger<SmtpNotificationSender> logger) :
     IRegistrationNotificationSender,
-    IRecoveryNotificationSender
+    IRecoveryNotificationSender,
+    IBuyerCredentialNotificationSender
 {
     private readonly SmtpOptions _options = options.Value;
 
@@ -48,6 +50,7 @@ public sealed class SmtpNotificationSender(
             body,
             isBodyHtml: true,
             notificationType: "registration-credential",
+            attachment: null,
             ct);
     }
 
@@ -85,6 +88,42 @@ public sealed class SmtpNotificationSender(
             body,
             isBodyHtml: true,
             notificationType: "password-recovery",
+            attachment: null,
+            ct);
+    }
+
+    public Task SendCredentialAsync(
+        string email,
+        string nickname,
+        BuyerCredentialDocument document,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        if (document.Content.Length == 0)
+            throw new ArgumentException("El PDF de la credencial no puede estar vacío.", nameof(document));
+
+        var safeNickname = WebUtility.HtmlEncode(nickname);
+        var body = $$"""
+            <!doctype html>
+            <html lang="es">
+            <body style="font-family:Arial,sans-serif;color:#2D3035;line-height:1.5">
+              <h2 style="margin-bottom:8px">Tu credencial NextTech Custom</h2>
+              <p>Hola <strong>{{safeNickname}}</strong>.</p>
+              <p>Adjuntamos tu credencial digital en formato PDF con tu fotografía y código QR de acceso.</p>
+              <p><strong>Importante:</strong> la emisión de esta credencial reemplaza cualquier QR anterior.</p>
+              <p>No compartas el PDF ni el código QR con terceros.</p>
+              <p>NextTech Solution</p>
+            </body>
+            </html>
+            """;
+
+        return SendAsync(
+            email,
+            "NextTech Custom - Credencial digital",
+            body,
+            isBodyHtml: true,
+            notificationType: "buyer-pdf-credential",
+            new EmailAttachment(document.FileName, document.ContentType, document.Content),
             ct);
     }
 
@@ -94,6 +133,7 @@ public sealed class SmtpNotificationSender(
         string body,
         bool isBodyHtml,
         string notificationType,
+        EmailAttachment? attachment,
         CancellationToken ct)
     {
         if (!_options.Enabled)
@@ -112,6 +152,12 @@ public sealed class SmtpNotificationSender(
             IsBodyHtml = isBodyHtml
         };
         message.To.Add(new MailAddress(recipient));
+
+        if (attachment is not null)
+        {
+            var stream = new MemoryStream(attachment.Content, writable: false);
+            message.Attachments.Add(new Attachment(stream, attachment.FileName, attachment.ContentType));
+        }
 
         using var client = new SmtpClient(_options.Host, _options.Port)
         {
@@ -132,8 +178,8 @@ public sealed class SmtpNotificationSender(
         }
         catch (Exception ex)
         {
-            // No se registra destinatario, token, credencial QR ni contenido del mensaje.
-            // Registro/recuperación mantienen una respuesta pública segura aunque SMTP falle.
+            // No se registra destinatario, token, QR, PDF ni contenido del mensaje.
+            // La operación principal no falla si el proveedor SMTP no está disponible.
             logger.LogError(ex, "No se pudo enviar el correo SMTP {NotificationType}.", notificationType);
         }
     }
@@ -143,4 +189,9 @@ public sealed class SmtpNotificationSender(
         var separator = _options.RecoveryUrlBase.Contains("?", StringComparison.Ordinal) ? "&" : "?";
         return $"{_options.RecoveryUrlBase}{separator}token={Uri.EscapeDataString(rawToken)}";
     }
+
+    private sealed record EmailAttachment(
+        string FileName,
+        string ContentType,
+        byte[] Content);
 }
