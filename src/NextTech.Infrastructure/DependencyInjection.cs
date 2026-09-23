@@ -16,6 +16,7 @@ using NextTech.Infrastructure.Credentials;
 using NextTech.Infrastructure.Email;
 using NextTech.Infrastructure.Face;
 using NextTech.Infrastructure.Health;
+using NextTech.Infrastructure.Pdf;
 using NextTech.Infrastructure.Persistence.Oracle;
 using NextTech.Infrastructure.Persistence.Oracle.Repositories;
 using NextTech.Infrastructure.Persistence.SqlServer;
@@ -62,6 +63,7 @@ public static class DependencyInjection
 
         QuestPDF.Settings.License = LicenseType.Community;
         services.AddSingleton<IBuyerCredentialPdfGenerator, BuyerCredentialPdfGenerator>();
+        services.AddSingleton<IPurchaseReceiptPdfGenerator, PurchaseReceiptPdfGenerator>();
 
         services.AddOptions<SmtpOptions>()
             .Bind(configuration.GetSection(SmtpOptions.SectionName))
@@ -81,6 +83,7 @@ public static class DependencyInjection
         services.AddSingleton<IRegistrationNotificationSender>(sp => sp.GetRequiredService<SmtpNotificationSender>());
         services.AddSingleton<IRecoveryNotificationSender>(sp => sp.GetRequiredService<SmtpNotificationSender>());
         services.AddSingleton<IBuyerCredentialNotificationSender>(sp => sp.GetRequiredService<SmtpNotificationSender>());
+        services.AddSingleton<IOrderMailSender>(sp => sp.GetRequiredService<SmtpNotificationSender>());
 
         services.AddOptions<FaceApiOptions>()
             .Bind(configuration.GetSection(FaceApiOptions.SectionName))

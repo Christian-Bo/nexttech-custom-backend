@@ -54,4 +54,18 @@ public sealed class OrdersController(
             codigo,
             cancellationToken));
     }
+
+    [HttpGet("orders/{codigo}/receipt")]
+    [Produces("application/pdf")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> Constancia(string codigo, CancellationToken cancellationToken)
+    {
+        var archivo = await orders.ObtenerConstanciaAsync(
+            actor.RequireIdCompradorExterno(),
+            codigo,
+            cancellationToken);
+
+        Response.Headers.CacheControl = "no-store";
+        return File(archivo.Datos, archivo.TipoMime, archivo.NombreOriginal);
+    }
 }

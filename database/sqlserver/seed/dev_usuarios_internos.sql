@@ -3,23 +3,24 @@
     No inserta compradores: el comprador vive en Oracle.
     El ADMIN ya viene en el script oficial de NextTechCustomDB.
 
-    Ejecutar en SQL Server / NextTechCustomDB (la remota de Infra, no localhost)
-    después del script oficial.
+    Crea supervisor@nexttech.com y repartidor@nexttech.com
+    con la clave de prueba admin123 (hash ASP.NET Identity).
+    Ejecutar en la SQL remota de Infra / NextTechCustomDB.
 */
 
 USE [NextTechCustomDB];
 
-DECLARE @HashAdmin NVARCHAR(500) =
-(
-    SELECT TOP (1) PasswordHash
+IF NOT EXISTS (
+    SELECT 1
     FROM dbo.UsuarioInterno
     WHERE Correo = N'correonexttechsolution933@gmail.com'
-);
-
-IF @HashAdmin IS NULL
+)
 BEGIN
     THROW 50001, 'Primero ejecuta el script oficial para crear el ADMIN.', 1;
 END;
+
+DECLARE @HashPrueba NVARCHAR(500) =
+    N'AQAAAAIAAYagAAAAEGhm9nLsfKqEUreP/Wg3LDkyQ92Nz0MLfjcQlDj9Xz11AQzOWrIny8aVu5P9khfQXw==';
 
 UPDATE dbo.UsuarioInterno
 SET Correo = N'supervisor@nexttech.com'
@@ -47,7 +48,7 @@ BEGIN
         N'Supervisor',
         N'Prueba',
         N'supervisor@nexttech.com',
-        @HashAdmin,
+        @HashPrueba,
         1,
         0
     );
@@ -71,8 +72,16 @@ BEGIN
         N'Repartidor',
         N'Prueba',
         N'repartidor@nexttech.com',
-        @HashAdmin,
+        @HashPrueba,
         1,
         0
     );
 END;
+
+UPDATE dbo.UsuarioInterno
+SET PasswordHash = @HashPrueba,
+    DebeCambiarPassword = 0,
+    Activo = 1,
+    IntentosFallidos = 0,
+    BloqueadoHasta = NULL
+WHERE Correo IN (N'supervisor@nexttech.com', N'repartidor@nexttech.com');

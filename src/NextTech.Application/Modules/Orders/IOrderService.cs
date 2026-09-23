@@ -59,4 +59,28 @@ public interface IOrderService
     Task<OrdenEntregaDto> BuscarParaEntregaAsync(
         string codigoOrden,
         CancellationToken cancellationToken);
+
+    Task<ArchivoDescargaDto> ObtenerConstanciaAsync(
+        long idCompradorExterno,
+        string codigoOrden,
+        CancellationToken cancellationToken);
+
+    Task<OrdenProduccionDto> ObtenerParaProduccionAsync(
+        string codigoOrden,
+        CancellationToken cancellationToken);
+
+    Task<ArchivoDescargaDto> ObtenerArchivoProduccionAsync(
+        string codigoOrden,
+        int idArchivo,
+        CancellationToken cancellationToken);
+
+    Task<ArchivoDescargaDto> ObtenerArchivoProduccionPorIdAsync(
+        int idArchivo,
+        CancellationToken cancellationToken);
+
+    Task RegistrarPagoNoRealizadoAsync(
+        int idRepartidor,
+        string codigoOrden,
+        string observacion,
+        CancellationToken cancellationToken);
 }
