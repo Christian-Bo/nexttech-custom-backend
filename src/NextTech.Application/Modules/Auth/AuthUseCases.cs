@@ -44,7 +44,7 @@ public sealed class BuyerAuthService(
         var nickname = request.Nickname.Trim();
         var phone = request.Phone.Trim();
 
-        ValidatePassword(request.Password);
+        PasswordPolicy.Validate(request.Password);
         if (string.IsNullOrWhiteSpace(phone) || phone.Length > 25)
             throw new AppValidationException("El teléfono es obligatorio y no puede exceder 25 caracteres.");
         if (string.IsNullOrWhiteSpace(nickname) || nickname.Length > 50)
@@ -55,6 +55,8 @@ public sealed class BuyerAuthService(
         if (await gateway.FindByIdentifierAsync(email, ct) is not null)
             throw new AppConflictException("El correo, nickname o teléfono ya está registrado.");
         if (await gateway.FindByIdentifierAsync(nickname, ct) is not null)
+            throw new AppConflictException("El correo, nickname o teléfono ya está registrado.");
+        if (await gateway.FindByIdentifierAsync(phone, ct) is not null)
             throw new AppConflictException("El correo, nickname o teléfono ya está registrado.");
 
         var qrCredential = CreateOpaqueToken();
@@ -167,7 +169,7 @@ public sealed class BuyerAuthService(
 
     public async Task ResetPasswordAsync(ResetPasswordRequest request, CancellationToken ct)
     {
-        ValidatePassword(request.NewPassword);
+        PasswordPolicy.Validate(request.NewPassword);
         if (string.IsNullOrWhiteSpace(request.Token))
             throw new AppValidationException("El token es obligatorio.");
 
@@ -257,14 +259,6 @@ public sealed class BuyerAuthService(
         return value;
     }
 
-    private static void ValidatePassword(string password)
-    {
-        if (string.IsNullOrWhiteSpace(password) || password.Length < 8 || password.Length > 128)
-            throw new AppValidationException("La contraseña debe tener entre 8 y 128 caracteres.");
-        if (!password.Any(char.IsUpper) || !password.Any(char.IsLower) || !password.Any(char.IsDigit))
-            throw new AppValidationException("La contraseña debe incluir mayúscula, minúscula y número.");
-    }
-
     private static string CreateOpaqueToken() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
         .TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
@@ -333,7 +327,7 @@ public sealed class InternalAuthService(
         string? ip,
         CancellationToken ct)
     {
-        ValidateInternalPassword(request.NewPassword);
+        PasswordPolicy.Validate(request.NewPassword);
 
         var user = await repository.FindByIdAsync(userId, ct)
             ?? throw new AppNotFoundException("Usuario interno no encontrado.");
@@ -380,11 +374,4 @@ public sealed class InternalAuthService(
             profile);
     }
 
-    internal static void ValidateInternalPassword(string password)
-    {
-        if (string.IsNullOrWhiteSpace(password) || password.Length < 8 || password.Length > 128)
-            throw new AppValidationException("La contraseña debe tener entre 8 y 128 caracteres.");
-        if (!password.Any(char.IsUpper) || !password.Any(char.IsLower) || !password.Any(char.IsDigit))
-            throw new AppValidationException("La contraseña debe incluir mayúscula, minúscula y número.");
-    }
 }

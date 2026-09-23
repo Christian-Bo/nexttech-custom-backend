@@ -44,6 +44,7 @@ public static class DependencyInjection
         services.AddScoped<IInternalUserAdministrationRepository, InternalUserAdministrationRepository>();
         services.AddScoped<IInternalSecurityAuditRepository, InternalSecurityAuditRepository>();
         services.AddScoped<IBuyerFaceEnrollmentStore, OracleBuyerBiometricStore>();
+        services.AddScoped<IBuyerProfileRepository, OracleBuyerProfileRepository>();
         services.AddSingleton<IPasswordService, PasswordService>();
         services.AddSingleton<ITokenService, JwtTokenService>();
 

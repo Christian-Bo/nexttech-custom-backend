@@ -45,7 +45,7 @@ public sealed class InternalUserAdministrationService(
         var lastName = ValidateName(request.LastName, "apellidos");
         var email = ValidateEmail(request.Email);
         var roleCode = NormalizeRole(request.RoleCode);
-        InternalAuthService.ValidateInternalPassword(request.TemporaryPassword);
+        PasswordPolicy.Validate(request.TemporaryPassword);
 
         var role = await repository.FindRoleByCodeAsync(roleCode, ct)
             ?? throw new AppValidationException("El rol interno indicado no existe.");
@@ -148,7 +148,7 @@ public sealed class InternalUserAdministrationService(
         _ = await repository.FindByIdAsync(userId, ct)
             ?? throw new AppNotFoundException("Usuario interno no encontrado.");
 
-        InternalAuthService.ValidateInternalPassword(request.TemporaryPassword);
+        PasswordPolicy.Validate(request.TemporaryPassword);
         return await repository.ResetPasswordAsync(
             userId,
             passwords.Hash(request.TemporaryPassword),
