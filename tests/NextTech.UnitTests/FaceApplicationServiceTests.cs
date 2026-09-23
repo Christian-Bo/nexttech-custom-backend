@@ -9,7 +9,7 @@ namespace NextTech.UnitTests;
 public sealed class FaceApplicationServiceTests
 {
     [Fact]
-    public async Task Enroll_PersistsProtectedArtifactsOnlyAfterSuccessfulLiveVerification()
+    public async Task Enroll_PersistsPhotosOnlyAfterSuccessfulLiveVerification()
     {
         var gateway = new StubGateway(ActiveBuyer());
         var biometrics = new StubBiometrics(authenticated: true);
@@ -26,8 +26,10 @@ public sealed class FaceApplicationServiceTests
         Assert.True(result.Enrolled);
         Assert.NotNull(store.Stored);
         Assert.Equal(21, store.Stored!.BuyerId);
-        Assert.Equal("protected-template", store.Stored.BiometricTemplate);
+        Assert.Equal("neutral.jpg", store.Stored.ReferenceImage.FileName);
         Assert.Equal(new byte[] { 1, 2, 3 }, store.Stored.PortraitContent);
+        Assert.Equal("1", result.TemplateVersion);
+        Assert.Equal("SFace", result.Model);
     }
 
     [Fact]
@@ -46,6 +48,32 @@ public sealed class FaceApplicationServiceTests
             CancellationToken.None));
 
         Assert.Null(store.Stored);
+    }
+
+    [Fact]
+    public async Task Verify_RebuildsTransientTemplateFromStoredReferenceImage()
+    {
+        var storedReference = Image("stored-reference.jpg");
+        var store = new StubStore(new BuyerFaceEnrollment(
+            21,
+            storedReference,
+            [1, 2, 3],
+            "image/png",
+            DateTimeOffset.UtcNow));
+        var biometrics = new StubBiometrics(authenticated: true);
+        var service = new FaceApplicationService(new StubGateway(ActiveBuyer()), biometrics, store);
+
+        var result = await service.VerifyBuyerAsync(
+            21,
+            "challenge-1",
+            Image("live-neutral.jpg"),
+            Image("live-challenge.jpg"),
+            CancellationToken.None);
+
+        Assert.True(result.AuthenticationPassed);
+        Assert.Single(biometrics.TemplateSourceImages);
+        Assert.Equal("stored-reference.jpg", biometrics.TemplateSourceImages[0].FileName);
+        Assert.Equal("protected-template", biometrics.LastVerificationTemplate);
     }
 
     private static BuyerAuthRecord ActiveBuyer() => new(
@@ -68,18 +96,24 @@ public sealed class FaceApplicationServiceTests
 
     private sealed class StubBiometrics(bool authenticated) : IFaceBiometricService
     {
+        public List<FaceImage> TemplateSourceImages { get; } = [];
+        public string? LastVerificationTemplate { get; private set; }
+
         public Task<FaceChallengeResult> CreateLivenessChallengeAsync(CancellationToken ct)
             => Task.FromResult(new FaceChallengeResult(
                 "challenge-1", "TURN_IMAGE_RIGHT", "Turn right", DateTimeOffset.UtcNow.AddMinutes(1), 60));
 
         public Task<ProtectedFaceEnrollmentResult> CreateTemplateAsync(FaceImage image, CancellationToken ct)
-            => Task.FromResult(new ProtectedFaceEnrollmentResult(
+        {
+            TemplateSourceImages.Add(image);
+            return Task.FromResult(new ProtectedFaceEnrollmentResult(
                 new ProtectedBiometricTemplate("protected-template", "1", "prod-v1", "SFace", 128, "ABC"),
                 new ProcessedFacePortrait([1, 2, 3], "image/png", 600, 800, "transparent"),
                 0.84m,
                 "ACCEPTED",
                 0,
                 "ok"));
+        }
 
         public Task<FaceVerificationResult> VerifyTemplateLiveAsync(
             string biometricTemplate,
@@ -87,7 +121,9 @@ public sealed class FaceApplicationServiceTests
             FaceImage neutralImage,
             FaceImage challengeImage,
             CancellationToken ct)
-            => Task.FromResult(new FaceVerificationResult(
+        {
+            LastVerificationTemplate = biometricTemplate;
+            return Task.FromResult(new FaceVerificationResult(
                 authenticated,
                 authenticated ? "AUTHENTICATED" : "LIVENESS_FAILED",
                 authenticated,
@@ -103,22 +139,25 @@ public sealed class FaceApplicationServiceTests
                 0.393m,
                 authenticated ? 0.5m : null,
                 null));
+        }
 
         public Task<FaceSegmentationResult> SegmentForCardAsync(FaceImage image, CancellationToken ct)
             => Task.FromResult(new FaceSegmentationResult([1], "image/png", "portrait.png"));
     }
 
-    private sealed class StubStore : IBuyerBiometricStore
+    private sealed class StubStore(BuyerFaceEnrollment? initial = null) : IBuyerFaceEnrollmentStore
     {
-        public BuyerBiometricCredential? Stored { get; private set; }
+        public BuyerFaceEnrollment? Stored { get; private set; } = initial;
 
-        public Task<BuyerBiometricCredential?> GetActiveAsync(long buyerId, CancellationToken ct)
-            => Task.FromResult(Stored);
+        public Task<BuyerFaceEnrollment?> GetActiveAsync(long buyerId, CancellationToken ct)
+            => Task.FromResult(Stored?.BuyerId == buyerId ? Stored : null);
 
-        public Task<BuyerBiometricCredential> UpsertAsync(BuyerBiometricCredential credential, CancellationToken ct)
+        public Task<BuyerFaceEnrollment> UpsertAsync(
+            BuyerFaceEnrollment enrollment,
+            CancellationToken ct)
         {
-            Stored = credential;
-            return Task.FromResult(credential);
+            Stored = enrollment;
+            return Task.FromResult(enrollment);
         }
     }
 
