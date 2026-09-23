@@ -23,7 +23,8 @@ public sealed record OrdenDetalleDto(
     string EstadoPago,
     IReadOnlyList<DetalleOrdenDto> Items,
     IReadOnlyList<TrackingEventoDto> Tracking,
-    IReadOnlyList<TrackingPasoDto> Pasos);
+    IReadOnlyList<TrackingPasoDto> Pasos,
+    int? IdArchivoConstancia);
 
 public sealed record DetalleOrdenDto(
     string NombreProducto,
@@ -59,6 +60,8 @@ public sealed record ConfirmarEntregaRequest(
 
 public sealed record NoEncontradoRequest(string Observacion);
 
+public sealed record PagoNoRealizadoRequest(string Observacion);
+
 public sealed record OrdenEntregaDto(
     string CodigoOrden,
     DateTime FechaCreacion,
@@ -68,3 +71,34 @@ public sealed record OrdenEntregaDto(
     string ReferenciaEntrega,
     string NicknameComprador,
     string EstadoPago);
+
+public sealed record ZonaProduccionDto(
+    int IdZona,
+    string Nombre,
+    int IdArchivoImagenFinal,
+    string TipoMime,
+    string ImagenBase64);
+
+public sealed record ItemProduccionDto(
+    string NombreProducto,
+    string NombreVariante,
+    int Cantidad,
+    string AtributosJson,
+    int? IdPersonalizacion,
+    IReadOnlyList<ZonaProduccionDto> Zonas);
+
+public sealed record OrdenProduccionDto(
+    string CodigoOrden,
+    DateTime FechaCreacion,
+    decimal Total,
+    string Estado,
+    string AreaEntrega,
+    string ReferenciaEntrega,
+    string NicknameComprador,
+    int? IdArchivoConstancia,
+    IReadOnlyList<ItemProduccionDto> Items);
+
+public sealed record ArchivoDescargaDto(
+    byte[] Datos,
+    string TipoMime,
+    string NombreOriginal);

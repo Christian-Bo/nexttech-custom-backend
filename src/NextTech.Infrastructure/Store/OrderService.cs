@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using NextTech.Application.Common.Files;
 using NextTech.Application.DTOs.Orders;
+using NextTech.Application.Interfaces;
 using NextTech.Application.Modules.Orders;
 using NextTech.Domain.Enums;
 using NextTech.Domain.Exceptions;
@@ -10,7 +11,10 @@ using NextTech.Infrastructure.Persistence.SqlServer.Entities;
 
 namespace NextTech.Infrastructure.Store;
 
-public sealed class OrderService(NextTechDbContext db) : IOrderService
+public sealed class OrderService(
+    NextTechDbContext db,
+    IPurchaseReceiptPdfGenerator receiptPdf,
+    IOrderMailSender mail) : IOrderService
 {
     public async Task<OrdenDetalleDto> CheckoutEfectivoAsync(
         long idCompradorExterno,
@@ -141,25 +145,57 @@ public sealed class OrderService(NextTechDbContext db) : IOrderService
             throw new BusinessRuleException("El total de la orden debe ser mayor que cero.");
         }
 
+        var codigoOrden = OrderCodeGenerator.Nuevo();
+        var nicknameAplicado = Truncar(nickname, 50);
+        var correoAplicado = Truncar(correo, 200);
+        var referencia = request.ReferenciaEntrega.Trim();
+        var receipt = receiptPdf.Generate(new PurchaseReceiptPdfData(
+            codigoOrden,
+            nicknameAplicado,
+            area.Nombre,
+            referencia,
+            total,
+            lineasConPrecio
+                .Select(linea => new PurchaseReceiptLine(
+                    linea.Producto.Nombre,
+                    linea.Variante.Nombre,
+                    linea.Detalle.Cantidad,
+                    linea.Subtotal))
+                .ToList(),
+            ahora));
+
         await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
 
         try
         {
+            var constancia = new Archivo
+            {
+                NombreOriginal = receipt.FileName,
+                TipoMime = receipt.ContentType,
+                Extension = ".pdf",
+                Datos = receipt.Content,
+                TamanoBytes = receipt.Content.Length,
+                FechaCreacion = ahora
+            };
+            db.Archivo.Add(constancia);
+            await db.SaveChangesAsync(cancellationToken);
+
             var orden = new Orden
             {
-                CodigoOrden = OrderCodeGenerator.Nuevo(),
+                CodigoOrden = codigoOrden,
                 IdCompradorExterno = idCompradorExterno,
-                NicknameCompradorAplicado = Truncar(nickname, 50),
-                CorreoCompradorAplicado = Truncar(correo, 200),
+                NicknameCompradorAplicado = nicknameAplicado,
+                CorreoCompradorAplicado = correoAplicado,
                 TelefonoCompradorAplicado = string.IsNullOrWhiteSpace(telefono)
                     ? null
                     : Truncar(telefono, 30),
                 IdCarritoOrigen = carrito.IdCarrito,
                 IdAreaEntrega = area.IdAreaEntrega,
                 NombreAreaAplicado = area.Nombre,
-                ReferenciaEntrega = request.ReferenciaEntrega.Trim(),
+                ReferenciaEntrega = referencia,
                 IdEstadoOrdenActual = (int)EstadoOrdenId.OrdenGenerada,
                 Total = total,
+                IdArchivoConstancia = constancia.IdArchivo,
                 FechaCreacion = ahora
             };
 
@@ -250,6 +286,17 @@ public sealed class OrderService(NextTechDbContext db) : IOrderService
 
             await db.SaveChangesAsync(cancellationToken);
             await tx.CommitAsync(cancellationToken);
+
+            await IntentarEnviarCorreoAsync(
+                orden.IdOrden,
+                TipoNotificacionId.ConfirmacionCompra,
+                ct => mail.SendPurchaseConfirmationAsync(
+                    correoAplicado,
+                    nicknameAplicado,
+                    orden.CodigoOrden,
+                    receipt.Content,
+                    ct),
+                cancellationToken);
 
             return await ObtenerSeguimientoAsync(
                 idCompradorExterno,
@@ -418,6 +465,16 @@ public sealed class OrderService(NextTechDbContext db) : IOrderService
             orden.CodigoOrden));
 
         await db.SaveChangesAsync(cancellationToken);
+
+        await IntentarEnviarCorreoAsync(
+            orden.IdOrden,
+            TipoNotificacionId.PedidoListo,
+            ct => mail.SendOrderReadyAsync(
+                orden.CorreoCompradorAplicado,
+                orden.NicknameCompradorAplicado,
+                orden.CodigoOrden,
+                ct),
+            cancellationToken);
     }
 
     public async Task TomarOrdenAsync(
@@ -564,6 +621,16 @@ public sealed class OrderService(NextTechDbContext db) : IOrderService
             orden.CodigoOrden));
 
         await db.SaveChangesAsync(cancellationToken);
+
+        await IntentarEnviarCorreoAsync(
+            orden.IdOrden,
+            TipoNotificacionId.EntregaConfirmada,
+            ct => mail.SendDeliveryConfirmedAsync(
+                orden.CorreoCompradorAplicado,
+                orden.NicknameCompradorAplicado,
+                orden.CodigoOrden,
+                ct),
+            cancellationToken);
     }
 
     public async Task RegistrarNoEncontradoAsync(
@@ -620,6 +687,201 @@ public sealed class OrderService(NextTechDbContext db) : IOrderService
             orden.CodigoOrden));
 
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task RegistrarPagoNoRealizadoAsync(
+        int idRepartidor,
+        string codigoOrden,
+        string observacion,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(observacion))
+        {
+            throw new BusinessRuleException("La observación es obligatoria si el pago no se realizó.");
+        }
+
+        var orden = await ObtenerOrdenDeRepartidorAsync(idRepartidor, codigoOrden, cancellationToken);
+        var intento = await ObtenerIntentoAbiertoAsync(orden.IdOrden, idRepartidor, cancellationToken);
+        var ahora = DateTime.Now;
+        var motivo = observacion.Trim();
+
+        intento.FechaHoraFin = ahora;
+        intento.IdResultadoEntrega = (int)ResultadoEntregaId.PagoNoRealizado;
+        intento.Observacion = motivo;
+
+        orden.IdRepartidorAsignado = null;
+        orden.IdEstadoOrdenActual = (int)EstadoOrdenId.ListoParaEntrega;
+        orden.FechaActualizacion = ahora;
+
+        db.HistorialEstadoOrden.Add(CrearHistorial(
+            orden.IdOrden,
+            EstadoOrdenId.ListoParaEntrega,
+            TipoActorId.UsuarioInterno,
+            idRepartidor,
+            idCompradorExterno: null,
+            ahora,
+            $"Pago no realizado: {motivo}"));
+
+        db.BitacoraAuditoria.Add(CrearBitacora(
+            TipoActorId.UsuarioInterno,
+            idRepartidor,
+            idCompradorExterno: null,
+            "PAGO_NO_REALIZADO",
+            "Orden",
+            orden.IdOrden,
+            "EXITOSO",
+            ahora,
+            orden.CodigoOrden));
+
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<ArchivoDescargaDto> ObtenerConstanciaAsync(
+        long idCompradorExterno,
+        string codigoOrden,
+        CancellationToken cancellationToken)
+    {
+        var orden = await db.Orden.AsNoTracking()
+            .FirstOrDefaultAsync(
+                o => o.CodigoOrden == codigoOrden && o.IdCompradorExterno == idCompradorExterno,
+                cancellationToken);
+
+        if (orden is null)
+        {
+            throw new NotFoundException("La orden no existe.");
+        }
+
+        if (orden.IdArchivoConstancia is not int idArchivo)
+        {
+            throw new NotFoundException("La orden no tiene constancia PDF.");
+        }
+
+        return await CargarArchivoAsync(idArchivo, cancellationToken);
+    }
+
+    public async Task<OrdenProduccionDto> ObtenerParaProduccionAsync(
+        string codigoOrden,
+        CancellationToken cancellationToken)
+    {
+        var orden = await db.Orden.AsNoTracking()
+            .FirstOrDefaultAsync(o => o.CodigoOrden == codigoOrden, cancellationToken);
+
+        if (orden is null)
+        {
+            throw new NotFoundException("La orden no existe.");
+        }
+
+        var estado = await db.EstadoOrden.AsNoTracking()
+            .FirstAsync(e => e.IdEstadoOrden == orden.IdEstadoOrdenActual, cancellationToken);
+
+        var detalles = await db.DetalleOrden.AsNoTracking()
+            .Where(d => d.IdOrden == orden.IdOrden)
+            .ToListAsync(cancellationToken);
+
+        var items = new List<ItemProduccionDto>();
+        foreach (var detalle in detalles)
+        {
+            IReadOnlyList<ZonaProduccionDto> zonas = Array.Empty<ZonaProduccionDto>();
+            if (detalle.IdPersonalizacion is int idPersonalizacion)
+            {
+                var filas = await (
+                    from pz in db.PersonalizacionZona.AsNoTracking()
+                    join z in db.ZonaPersonalizacion.AsNoTracking() on pz.IdZona equals z.IdZona
+                    join a in db.Archivo.AsNoTracking() on pz.IdArchivoImagenFinal equals a.IdArchivo
+                    where pz.IdPersonalizacion == idPersonalizacion
+                    orderby z.OrdenVisual
+                    select new
+                    {
+                        z.IdZona,
+                        z.Nombre,
+                        pz.IdArchivoImagenFinal,
+                        a.TipoMime,
+                        a.Datos
+                    })
+                    .ToListAsync(cancellationToken);
+
+                zonas = filas
+                    .Select(fila => new ZonaProduccionDto(
+                        fila.IdZona,
+                        fila.Nombre,
+                        fila.IdArchivoImagenFinal,
+                        fila.TipoMime,
+                        Convert.ToBase64String(fila.Datos)))
+                    .ToList();
+            }
+
+            items.Add(new ItemProduccionDto(
+                detalle.NombreProductoAplicado,
+                detalle.NombreVarianteAplicada,
+                detalle.Cantidad,
+                detalle.AtributosAplicadosJson,
+                detalle.IdPersonalizacion,
+                zonas));
+        }
+
+        return new OrdenProduccionDto(
+            orden.CodigoOrden,
+            orden.FechaCreacion,
+            orden.Total,
+            estado.Nombre,
+            orden.NombreAreaAplicado,
+            orden.ReferenciaEntrega,
+            orden.NicknameCompradorAplicado,
+            orden.IdArchivoConstancia,
+            items);
+    }
+
+    public async Task<ArchivoDescargaDto> ObtenerArchivoProduccionAsync(
+        string codigoOrden,
+        int idArchivo,
+        CancellationToken cancellationToken)
+    {
+        var orden = await db.Orden.AsNoTracking()
+            .FirstOrDefaultAsync(o => o.CodigoOrden == codigoOrden, cancellationToken);
+
+        if (orden is null)
+        {
+            throw new NotFoundException("La orden no existe.");
+        }
+
+        var esConstancia = orden.IdArchivoConstancia == idArchivo;
+        var esImagenZona = await (
+            from d in db.DetalleOrden.AsNoTracking()
+            join pz in db.PersonalizacionZona.AsNoTracking()
+                on d.IdPersonalizacion equals pz.IdPersonalizacion
+            where d.IdOrden == orden.IdOrden && pz.IdArchivoImagenFinal == idArchivo
+            select pz.IdArchivoImagenFinal)
+            .AnyAsync(cancellationToken);
+
+        if (!esConstancia && !esImagenZona)
+        {
+            throw new NotFoundException("El archivo no pertenece a esta orden.");
+        }
+
+        return await CargarArchivoAsync(idArchivo, cancellationToken);
+    }
+
+    public async Task<ArchivoDescargaDto> ObtenerArchivoProduccionPorIdAsync(
+        int idArchivo,
+        CancellationToken cancellationToken)
+    {
+        var esConstancia = await db.Orden.AsNoTracking()
+            .AnyAsync(o => o.IdArchivoConstancia == idArchivo, cancellationToken);
+
+        var esImagenZonaDeOrden = await (
+            from d in db.DetalleOrden.AsNoTracking()
+            join pz in db.PersonalizacionZona.AsNoTracking()
+                on d.IdPersonalizacion equals pz.IdPersonalizacion
+            where pz.IdArchivoImagenFinal == idArchivo
+            select pz.IdArchivoImagenFinal)
+            .AnyAsync(cancellationToken);
+
+        if (!esConstancia && !esImagenZonaDeOrden)
+        {
+            throw new NotFoundException("El archivo no existe.");
+        }
+
+        return await CargarArchivoAsync(idArchivo, cancellationToken);
     }
 
     private async Task<Orden> ObtenerOrdenDeRepartidorAsync(
@@ -706,7 +968,8 @@ public sealed class OrderService(NextTechDbContext db) : IOrderService
             pago.Estado,
             items,
             historial,
-            ConstruirPasos(catalogoEstados, orden.IdEstadoOrdenActual));
+            ConstruirPasos(catalogoEstados, orden.IdEstadoOrdenActual),
+            orden.IdArchivoConstancia);
     }
 
     private async Task<IReadOnlyList<OrdenColaDto>> ListarColaAsync(
@@ -869,5 +1132,69 @@ public sealed class OrderService(NextTechDbContext db) : IOrderService
         }
 
         return limpio.Length <= max ? limpio : limpio[..max];
+    }
+
+    private async Task<ArchivoDescargaDto> CargarArchivoAsync(
+        int idArchivo,
+        CancellationToken cancellationToken)
+    {
+        var archivo = await db.Archivo.AsNoTracking()
+            .FirstOrDefaultAsync(a => a.IdArchivo == idArchivo, cancellationToken);
+
+        if (archivo is null)
+        {
+            throw new NotFoundException("El archivo no existe.");
+        }
+
+        return new ArchivoDescargaDto(archivo.Datos, archivo.TipoMime, archivo.NombreOriginal);
+    }
+
+    private async Task IntentarEnviarCorreoAsync(
+        int idOrden,
+        TipoNotificacionId tipo,
+        Func<CancellationToken, Task<bool>> enviar,
+        CancellationToken cancellationToken)
+    {
+        var notificacion = await db.Notificacion
+            .FirstOrDefaultAsync(
+                n => n.IdOrden == idOrden
+                     && n.IdTipoNotificacion == (int)tipo
+                     && n.IdCanalNotificacion == (int)CanalNotificacionId.Correo
+                     && n.IdEstadoNotificacion == (int)EstadoNotificacionId.Pendiente,
+                cancellationToken);
+
+        if (notificacion is null)
+        {
+            return;
+        }
+
+        notificacion.Intentos += 1;
+        var enviado = false;
+        try
+        {
+            enviado = await enviar(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            enviado = false;
+        }
+
+        if (enviado)
+        {
+            notificacion.IdEstadoNotificacion = (int)EstadoNotificacionId.Enviada;
+            notificacion.FechaEnvio = DateTime.Now;
+            notificacion.MensajeError = null;
+        }
+        else
+        {
+            notificacion.IdEstadoNotificacion = (int)EstadoNotificacionId.Fallida;
+            notificacion.MensajeError = "El correo no pudo enviarse.";
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
     }
 }

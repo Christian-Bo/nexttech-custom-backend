@@ -36,4 +36,24 @@ public sealed class SupervisorOrdersController(
 
         return NoContent();
     }
+
+    [HttpGet("{codigo}")]
+    public async Task<IActionResult> DetalleProduccion(string codigo, CancellationToken cancellationToken)
+    {
+        _ = actor.RequireIdUsuarioInterno();
+        return Ok(await orders.ObtenerParaProduccionAsync(codigo, cancellationToken));
+    }
+
+    [HttpGet("{codigo}/files/{idArchivo:int}")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ArchivoProduccion(
+        string codigo,
+        int idArchivo,
+        CancellationToken cancellationToken)
+    {
+        _ = actor.RequireIdUsuarioInterno();
+        var archivo = await orders.ObtenerArchivoProduccionAsync(codigo, idArchivo, cancellationToken);
+        Response.Headers.CacheControl = "no-store";
+        return File(archivo.Datos, archivo.TipoMime, archivo.NombreOriginal);
+    }
 }

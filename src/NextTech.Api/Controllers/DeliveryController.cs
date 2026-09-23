@@ -64,4 +64,19 @@ public sealed class DeliveryController(
 
         return NoContent();
     }
+
+    [HttpPost("{codigo}/payment-failed")]
+    public async Task<IActionResult> PagoNoRealizado(
+        string codigo,
+        [FromBody] PagoNoRealizadoRequest request,
+        CancellationToken cancellationToken)
+    {
+        await orders.RegistrarPagoNoRealizadoAsync(
+            actor.RequireIdUsuarioInterno(),
+            codigo,
+            request.Observacion,
+            cancellationToken);
+
+        return NoContent();
+    }
 }
