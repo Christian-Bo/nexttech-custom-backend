@@ -10,6 +10,7 @@ using NextTech.Api.Middleware;
 using NextTech.Application.Modules.Auth;
 using NextTech.Application.Modules.Credentials;
 using NextTech.Application.Modules.Face;
+using NextTech.Application.Modules.Profile;
 using NextTech.Infrastructure;
 
 LocalEnvLoader.Load();
@@ -26,6 +27,7 @@ builder.Services.AddScoped<InternalUserAdministrationService>();
 builder.Services.AddScoped<InternalSecurityAuditService>();
 builder.Services.AddScoped<BuyerCredentialService>();
 builder.Services.AddScoped<FaceApplicationService>();
+builder.Services.AddScoped<BuyerProfileService>();
 builder.Services.AddNextTechAuthorization();
 
 var allowedOrigins = builder.Configuration
@@ -128,6 +130,28 @@ builder.Services.AddRateLimiter(options =>
             factory: _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = 3,
+                Window = TimeSpan.FromMinutes(10),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+
+    options.AddPolicy("profile", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: GetBuyerOrClientPartitionKey(httpContext),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 20,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+
+    options.AddPolicy("profile-sensitive", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: GetBuyerOrClientPartitionKey(httpContext),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
                 Window = TimeSpan.FromMinutes(10),
                 QueueLimit = 0,
                 AutoReplenishment = true
