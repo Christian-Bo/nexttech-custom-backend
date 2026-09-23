@@ -22,6 +22,8 @@ builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddScoped<BuyerAuthService>();
 builder.Services.AddScoped<InternalAuthService>();
+builder.Services.AddScoped<InternalUserAdministrationService>();
+builder.Services.AddScoped<InternalSecurityAuditService>();
 builder.Services.AddScoped<BuyerCredentialService>();
 builder.Services.AddScoped<FaceApplicationService>();
 builder.Services.AddNextTechAuthorization();
