@@ -34,7 +34,7 @@ public sealed class BuyerAuthService(
     IPasswordService passwords,
     ITokenService tokens,
     IFaceBiometricService faceBiometrics,
-    IBuyerBiometricStore biometricStore,
+    IBuyerFaceEnrollmentStore enrollmentStore,
     IRegistrationNotificationSender registrationNotifications,
     IRecoveryNotificationSender recoveryNotifications)
 {
@@ -206,15 +206,19 @@ public sealed class BuyerAuthService(
         }
 
         EnsureBuyerCanLogin(buyer);
-        var credential = await biometricStore.GetActiveAsync(buyer.IdUsuario, ct);
-        if (credential is null)
+        var enrollment = await enrollmentStore.GetActiveAsync(buyer.IdUsuario, ct);
+        if (enrollment is null)
         {
             await gateway.RegisterFailedLoginAsync(buyer.IdUsuario, normalizedIdentifier, "FACIAL", "Sin enrolamiento facial", ct);
             throw new AppUnauthorizedException("No fue posible validar el rostro.");
         }
 
+        var transientTemplate = await faceBiometrics.CreateTemplateAsync(
+            enrollment.ReferenceImage,
+            ct);
+
         var result = await faceBiometrics.VerifyTemplateLiveAsync(
-            credential.BiometricTemplate,
+            transientTemplate.BiometricTemplate.Value,
             challengeId.Trim(),
             neutralImage,
             challengeImage,
