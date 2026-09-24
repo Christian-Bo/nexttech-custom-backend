@@ -3,7 +3,7 @@
     No inserta compradores: el comprador vive en Oracle.
     El ADMIN ya viene en el script oficial de NextTechCustomDB.
 
-    Crea supervisor@nexttech.com y repartidor@nexttech.com
+    Crea admin@nexttech.com, supervisor@nexttech.com y repartidor@nexttech.com
     con la clave de prueba admin123 (hash ASP.NET Identity).
     Ejecutar en la SQL remota de Infra / NextTechCustomDB.
 */
@@ -29,6 +29,30 @@ WHERE Correo = N'supervisor@nexttech.local';
 UPDATE dbo.UsuarioInterno
 SET Correo = N'repartidor@nexttech.com'
 WHERE Correo = N'repartidor@nexttech.local';
+
+IF NOT EXISTS (SELECT 1 FROM dbo.UsuarioInterno WHERE Correo = N'admin@nexttech.com')
+BEGIN
+    INSERT dbo.UsuarioInterno
+    (
+        IdRol,
+        Nombres,
+        Apellidos,
+        Correo,
+        PasswordHash,
+        Activo,
+        DebeCambiarPassword
+    )
+    VALUES
+    (
+        1,
+        N'Admin',
+        N'Prueba',
+        N'admin@nexttech.com',
+        @HashPrueba,
+        1,
+        0
+    );
+END;
 
 IF NOT EXISTS (SELECT 1 FROM dbo.UsuarioInterno WHERE Correo = N'supervisor@nexttech.com')
 BEGIN
@@ -84,4 +108,4 @@ SET PasswordHash = @HashPrueba,
     Activo = 1,
     IntentosFallidos = 0,
     BloqueadoHasta = NULL
-WHERE Correo IN (N'supervisor@nexttech.com', N'repartidor@nexttech.com');
+WHERE Correo IN (N'admin@nexttech.com', N'supervisor@nexttech.com', N'repartidor@nexttech.com');
