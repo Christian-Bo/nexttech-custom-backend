@@ -1,0 +1,194 @@
+{
+  "info": {
+    "name": "NextTech Admin - catalogo",
+    "description": "CRUD de catálogo. Solo ADMIN (parametrización). Supervisor y repartidor deben recibir 403.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "adminEmail", "value": "admin@nexttech.com" },
+    { "key": "adminPassword", "value": "admin123" },
+    { "key": "tokenInterno", "value": "" },
+    { "key": "codigoProducto", "value": "LLV-001" },
+    { "key": "idVariante", "value": "1" },
+    { "key": "idCategoria", "value": "1" }
+  ],
+  "item": [
+    {
+      "name": "0. Login interno",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 200) {",
+              "  pm.collectionVariables.set('tokenInterno', pm.response.json().accessToken);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}"
+        },
+        "url": "{{baseUrl}}/api/internal/auth/login"
+      }
+    },
+    {
+      "name": "1. Categorias",
+      "item": [
+        {
+          "name": "Listar",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenInterno}}" }],
+            "url": "{{baseUrl}}/api/admin/catalog/categories"
+          }
+        },
+        {
+          "name": "Crear",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenInterno}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Stickers\",\n  \"descripcion\": \"Categoria de prueba\"\n}"
+            },
+            "url": "{{baseUrl}}/api/admin/catalog/categories"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Productos",
+      "item": [
+        {
+          "name": "Listar (incluye inactivos)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenInterno}}" }],
+            "url": "{{baseUrl}}/api/admin/catalog/products"
+          }
+        },
+        {
+          "name": "Detalle LLV-001",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenInterno}}" }],
+            "url": "{{baseUrl}}/api/admin/catalog/products/{{codigoProducto}}"
+          }
+        },
+        {
+          "name": "Cambiar precio base a 10",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenInterno}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idCategoria\": 1,\n  \"nombre\": \"Llavero Personalizado\",\n  \"descripcion\": \"Llavero personalizable con zonas Lado A y Lado B.\",\n  \"precioBase\": 10,\n  \"permitePersonalizacion\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/admin/catalog/products/{{codigoProducto}}"
+          }
+        },
+        {
+          "name": "Crear producto",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenInterno}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idCategoria\": {{idCategoria}},\n  \"codigoProducto\": \"LLV-002\",\n  \"nombre\": \"Llavero de prueba\",\n  \"descripcion\": \"Producto creado por admin\",\n  \"precioBase\": 15,\n  \"permitePersonalizacion\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/admin/catalog/products"
+          }
+        },
+        {
+          "name": "Desactivar",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenInterno}}" }],
+            "url": "{{baseUrl}}/api/admin/catalog/products/LLV-002/deactivate"
+          }
+        },
+        {
+          "name": "Activar",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenInterno}}" }],
+            "url": "{{baseUrl}}/api/admin/catalog/products/LLV-002/activate"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Variantes",
+      "item": [
+        {
+          "name": "Crear variante",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenInterno}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigoVariante\": \"LLV-002-CIR\",\n  \"nombre\": \"Circular prueba\",\n  \"descripcion\": null,\n  \"precioAdicional\": 0,\n  \"formaLienzo\": \"CIRCULAR\"\n}"
+            },
+            "url": "{{baseUrl}}/api/admin/catalog/products/LLV-002/variants"
+          }
+        },
+        {
+          "name": "Editar variante",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenInterno}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Acrilico Circular Mediano\",\n  \"descripcion\": null,\n  \"precioAdicional\": 0,\n  \"formaLienzo\": \"CIRCULAR\"\n}"
+            },
+            "url": "{{baseUrl}}/api/admin/catalog/variants/{{idVariante}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Areas de entrega",
+      "item": [
+        {
+          "name": "Listar",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenInterno}}" }],
+            "url": "{{baseUrl}}/api/admin/catalog/delivery-areas"
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Catalogo publico (sin token)",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/catalog/products/LLV-001",
+        "description": "Debe mostrar el precioBase actualizado. Productos desactivados no aparecen."
+      }
+    }
+  ]
+}
