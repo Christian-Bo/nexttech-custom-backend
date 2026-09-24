@@ -8,6 +8,7 @@ using NextTech.Domain.Enums;
 using NextTech.Domain.Exceptions;
 using NextTech.Infrastructure.Persistence.SqlServer;
 using NextTech.Infrastructure.Persistence.SqlServer.Entities;
+using NextTech.Infrastructure.QR;
 
 namespace NextTech.Infrastructure.Store;
 
@@ -759,6 +760,25 @@ public sealed class OrderService(
         return await CargarArchivoAsync(idArchivo, cancellationToken);
     }
 
+    public async Task<ArchivoDescargaDto> ObtenerQrConstanciaAsync(
+        long idCompradorExterno,
+        string codigoOrden,
+        CancellationToken cancellationToken)
+    {
+        var orden = await db.Orden.AsNoTracking()
+            .FirstOrDefaultAsync(
+                o => o.CodigoOrden == codigoOrden && o.IdCompradorExterno == idCompradorExterno,
+                cancellationToken);
+
+        if (orden is null)
+        {
+            throw new NotFoundException("La orden no existe.");
+        }
+
+        var png = OrderQrPng.Create(orden.CodigoOrden);
+        return new ArchivoDescargaDto(png, OrderQrPng.ContentType, OrderQrPng.FileName(orden.CodigoOrden));
+    }
+
     public async Task<OrdenProduccionDto> ObtenerParaProduccionAsync(
         string codigoOrden,
         CancellationToken cancellationToken)
@@ -969,7 +989,8 @@ public sealed class OrderService(
             items,
             historial,
             ConstruirPasos(catalogoEstados, orden.IdEstadoOrdenActual),
-            orden.IdArchivoConstancia);
+            orden.IdArchivoConstancia,
+            orden.CodigoOrden);
     }
 
     private async Task<IReadOnlyList<OrdenColaDto>> ListarColaAsync(

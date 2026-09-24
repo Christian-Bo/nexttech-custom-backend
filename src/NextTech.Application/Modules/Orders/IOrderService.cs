@@ -65,6 +65,11 @@ public interface IOrderService
         string codigoOrden,
         CancellationToken cancellationToken);
 
+    Task<ArchivoDescargaDto> ObtenerQrConstanciaAsync(
+        long idCompradorExterno,
+        string codigoOrden,
+        CancellationToken cancellationToken);
+
     Task<OrdenProduccionDto> ObtenerParaProduccionAsync(
         string codigoOrden,
         CancellationToken cancellationToken);

@@ -316,6 +316,17 @@
           }
         },
         {
+          "name": "2e3. QR en pantalla",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenComprador}}" }
+            ],
+            "url": "{{baseUrl}}/api/orders/{{codigoOrden}}/receipt-qr",
+            "description": "PNG del mismo QR del PDF. El portal lo muestra grande para que el repartidor escanee sin abrir el archivo. Payload = codigoOrden."
+          }
+        },
+        {
           "name": "2f. Mis compras",
           "request": {
             "method": "GET",

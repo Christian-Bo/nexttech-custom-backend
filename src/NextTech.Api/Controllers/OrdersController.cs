@@ -68,4 +68,18 @@ public sealed class OrdersController(
         Response.Headers.CacheControl = "no-store";
         return File(archivo.Datos, archivo.TipoMime, archivo.NombreOriginal);
     }
+
+    [HttpGet("orders/{codigo}/receipt-qr")]
+    [Produces("image/png")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> QrConstancia(string codigo, CancellationToken cancellationToken)
+    {
+        var archivo = await orders.ObtenerQrConstanciaAsync(
+            actor.RequireIdCompradorExterno(),
+            codigo,
+            cancellationToken);
+
+        Response.Headers.CacheControl = "no-store";
+        return File(archivo.Datos, archivo.TipoMime, archivo.NombreOriginal);
+    }
 }
