@@ -1,6 +1,6 @@
 using NextTech.Application.Common;
 using NextTech.Application.Interfaces;
-using QRCoder;
+using NextTech.Infrastructure.QR;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -19,7 +19,7 @@ public sealed class PurchaseReceiptPdfGenerator : IPurchaseReceiptPdfGenerator
 
         try
         {
-            var qrImage = CreateQrPng(data.CodigoOrden.Trim());
+            var qrImage = OrderQrPng.Create(data.CodigoOrden);
             var pdf = Document.Create(document =>
             {
                 document.Page(page =>
@@ -103,12 +103,5 @@ public sealed class PurchaseReceiptPdfGenerator : IPurchaseReceiptPdfGenerator
         {
             throw new AppDependencyException("No fue posible generar la constancia PDF de la compra.");
         }
-    }
-
-    private static byte[] CreateQrPng(string codigoOrden)
-    {
-        using var qrData = QRCodeGenerator.GenerateQrCode(codigoOrden, QRCodeGenerator.ECCLevel.Q);
-        using var qr = new PngByteQRCode(qrData);
-        return qr.GetGraphic(10);
     }
 }
