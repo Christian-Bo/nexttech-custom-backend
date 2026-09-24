@@ -5,11 +5,14 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.OpenApi.Models;
 using NextTech.Api.Configuration;
+using NextTech.Api.CurrentActor;
 using NextTech.Api.Extensions;
 using NextTech.Api.Middleware;
+using NextTech.Application.Common.CurrentActor;
 using NextTech.Application.Modules.Auth;
 using NextTech.Application.Modules.Credentials;
 using NextTech.Application.Modules.Face;
+using NextTech.Application.Modules.Profile;
 using NextTech.Infrastructure;
 
 LocalEnvLoader.Load();
@@ -18,7 +21,10 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<DomainExceptionHandler>();
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentActor, HttpCurrentActor>();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddScoped<BuyerAuthService>();
 builder.Services.AddScoped<InternalAuthService>();
@@ -26,6 +32,7 @@ builder.Services.AddScoped<InternalUserAdministrationService>();
 builder.Services.AddScoped<InternalSecurityAuditService>();
 builder.Services.AddScoped<BuyerCredentialService>();
 builder.Services.AddScoped<FaceApplicationService>();
+builder.Services.AddScoped<BuyerProfileService>();
 builder.Services.AddNextTechAuthorization();
 
 var allowedOrigins = builder.Configuration
@@ -128,6 +135,28 @@ builder.Services.AddRateLimiter(options =>
             factory: _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = 3,
+                Window = TimeSpan.FromMinutes(10),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+
+    options.AddPolicy("profile", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: GetBuyerOrClientPartitionKey(httpContext),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 20,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+
+    options.AddPolicy("profile-sensitive", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: GetBuyerOrClientPartitionKey(httpContext),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
                 Window = TimeSpan.FromMinutes(10),
                 QueueLimit = 0,
                 AutoReplenishment = true

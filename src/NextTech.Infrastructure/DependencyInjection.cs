@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -5,15 +6,22 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using NextTech.Application.Interfaces;
+using NextTech.Application.Modules.Cart;
+using NextTech.Application.Modules.Catalog;
+using NextTech.Application.Modules.Dashboard;
+using NextTech.Application.Modules.Orders;
+using NextTech.Application.Modules.Personalization;
 using NextTech.Infrastructure.Authentication;
 using NextTech.Infrastructure.Credentials;
 using NextTech.Infrastructure.Email;
 using NextTech.Infrastructure.Face;
 using NextTech.Infrastructure.Health;
+using NextTech.Infrastructure.Pdf;
 using NextTech.Infrastructure.Persistence.Oracle;
 using NextTech.Infrastructure.Persistence.Oracle.Repositories;
 using NextTech.Infrastructure.Persistence.SqlServer;
 using NextTech.Infrastructure.Persistence.SqlServer.Repositories;
+using NextTech.Infrastructure.Store;
 using QuestPDF.Infrastructure;
 
 namespace NextTech.Infrastructure;
@@ -44,11 +52,18 @@ public static class DependencyInjection
         services.AddScoped<IInternalUserAdministrationRepository, InternalUserAdministrationRepository>();
         services.AddScoped<IInternalSecurityAuditRepository, InternalSecurityAuditRepository>();
         services.AddScoped<IBuyerFaceEnrollmentStore, OracleBuyerBiometricStore>();
+        services.AddScoped<IBuyerProfileRepository, OracleBuyerProfileRepository>();
         services.AddSingleton<IPasswordService, PasswordService>();
         services.AddSingleton<ITokenService, JwtTokenService>();
+        services.AddScoped<ICatalogService, CatalogService>();
+        services.AddScoped<IPersonalizationService, PersonalizationService>();
+        services.AddScoped<ICartService, CartService>();
+        services.AddScoped<IOrderService, OrderService>();
+        services.AddScoped<IDashboardService, DashboardService>();
 
         QuestPDF.Settings.License = LicenseType.Community;
         services.AddSingleton<IBuyerCredentialPdfGenerator, BuyerCredentialPdfGenerator>();
+        services.AddSingleton<IPurchaseReceiptPdfGenerator, PurchaseReceiptPdfGenerator>();
 
         services.AddOptions<SmtpOptions>()
             .Bind(configuration.GetSection(SmtpOptions.SectionName))
@@ -68,6 +83,7 @@ public static class DependencyInjection
         services.AddSingleton<IRegistrationNotificationSender>(sp => sp.GetRequiredService<SmtpNotificationSender>());
         services.AddSingleton<IRecoveryNotificationSender>(sp => sp.GetRequiredService<SmtpNotificationSender>());
         services.AddSingleton<IBuyerCredentialNotificationSender>(sp => sp.GetRequiredService<SmtpNotificationSender>());
+        services.AddSingleton<IOrderMailSender>(sp => sp.GetRequiredService<SmtpNotificationSender>());
 
         services.AddOptions<FaceApiOptions>()
             .Bind(configuration.GetSection(FaceApiOptions.SectionName))
@@ -144,7 +160,9 @@ public static class DependencyInjection
                     ValidAudience = jwt.Audience,
                     IssuerSigningKey = new SymmetricSecurityKey(
                         Encoding.UTF8.GetBytes(jwt.Key)),
-                    ClockSkew = TimeSpan.FromMinutes(1)
+                    ClockSkew = TimeSpan.FromMinutes(1),
+                    RoleClaimType = ClaimTypes.Role,
+                    NameClaimType = ClaimTypes.NameIdentifier
                 };
             });
 

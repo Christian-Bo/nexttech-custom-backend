@@ -12,7 +12,8 @@ public sealed class SmtpNotificationSender(
     ILogger<SmtpNotificationSender> logger) :
     IRegistrationNotificationSender,
     IRecoveryNotificationSender,
-    IBuyerCredentialNotificationSender
+    IBuyerCredentialNotificationSender,
+    IOrderMailSender
 {
     private readonly SmtpOptions _options = options.Value;
 
@@ -127,7 +128,103 @@ public sealed class SmtpNotificationSender(
             ct);
     }
 
-    private async Task SendAsync(
+    public Task<bool> SendPurchaseConfirmationAsync(
+        string email,
+        string nickname,
+        string codigoOrden,
+        byte[] pdf,
+        CancellationToken cancellationToken)
+    {
+        var safeNickname = WebUtility.HtmlEncode(nickname);
+        var safeCodigo = WebUtility.HtmlEncode(codigoOrden);
+        var body = $$"""
+            <!doctype html>
+            <html lang="es">
+            <body style="font-family:Arial,sans-serif;color:#2D3035;line-height:1.5">
+              <h2 style="margin-bottom:8px">Confirmación de compra</h2>
+              <p>Hola <strong>{{safeNickname}}</strong>.</p>
+              <p>Tu orden <strong>{{safeCodigo}}</strong> fue generada. Adjuntamos la constancia PDF con el código QR de entrega.</p>
+              <p>El pago en efectivo se confirma al recibir el producto.</p>
+              <p>NextTech Solution</p>
+            </body>
+            </html>
+            """;
+
+        EmailAttachment? attachment = pdf.Length == 0
+            ? null
+            : new EmailAttachment($"constancia-{codigoOrden}.pdf", "application/pdf", pdf);
+
+        return SendAsync(
+            email,
+            $"NextTech Custom - Constancia {codigoOrden}",
+            body,
+            isBodyHtml: true,
+            notificationType: "order-confirmation",
+            attachment,
+            cancellationToken);
+    }
+
+    public Task<bool> SendOrderReadyAsync(
+        string email,
+        string nickname,
+        string codigoOrden,
+        CancellationToken cancellationToken)
+    {
+        var safeNickname = WebUtility.HtmlEncode(nickname);
+        var safeCodigo = WebUtility.HtmlEncode(codigoOrden);
+        var body = $$"""
+            <!doctype html>
+            <html lang="es">
+            <body style="font-family:Arial,sans-serif;color:#2D3035;line-height:1.5">
+              <h2 style="margin-bottom:8px">Pedido listo para entrega</h2>
+              <p>Hola <strong>{{safeNickname}}</strong>.</p>
+              <p>Tu orden <strong>{{safeCodigo}}</strong> ya está lista. Un repartidor la tomará para entregarla en el área que elegiste.</p>
+              <p>NextTech Solution</p>
+            </body>
+            </html>
+            """;
+
+        return SendAsync(
+            email,
+            $"NextTech Custom - Pedido listo {codigoOrden}",
+            body,
+            isBodyHtml: true,
+            notificationType: "order-ready",
+            attachment: null,
+            cancellationToken);
+    }
+
+    public Task<bool> SendDeliveryConfirmedAsync(
+        string email,
+        string nickname,
+        string codigoOrden,
+        CancellationToken cancellationToken)
+    {
+        var safeNickname = WebUtility.HtmlEncode(nickname);
+        var safeCodigo = WebUtility.HtmlEncode(codigoOrden);
+        var body = $$"""
+            <!doctype html>
+            <html lang="es">
+            <body style="font-family:Arial,sans-serif;color:#2D3035;line-height:1.5">
+              <h2 style="margin-bottom:8px">Entrega confirmada</h2>
+              <p>Hola <strong>{{safeNickname}}</strong>.</p>
+              <p>Tu orden <strong>{{safeCodigo}}</strong> fue entregada. Gracias por comprar en NextTech Custom.</p>
+              <p>NextTech Solution</p>
+            </body>
+            </html>
+            """;
+
+        return SendAsync(
+            email,
+            $"NextTech Custom - Entrega {codigoOrden}",
+            body,
+            isBodyHtml: true,
+            notificationType: "order-delivered",
+            attachment: null,
+            cancellationToken);
+    }
+
+    private async Task<bool> SendAsync(
         string recipient,
         string subject,
         string body,
@@ -139,7 +236,7 @@ public sealed class SmtpNotificationSender(
         if (!_options.Enabled)
         {
             logger.LogInformation("SMTP deshabilitado. No se enviará el correo {NotificationType}.", notificationType);
-            return;
+            return false;
         }
 
         ct.ThrowIfCancellationRequested();
@@ -171,6 +268,7 @@ public sealed class SmtpNotificationSender(
         try
         {
             await client.SendMailAsync(message).WaitAsync(ct);
+            return true;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -181,6 +279,7 @@ public sealed class SmtpNotificationSender(
             // No se registra destinatario, token, QR, PDF ni contenido del mensaje.
             // La operación principal no falla si el proveedor SMTP no está disponible.
             logger.LogError(ex, "No se pudo enviar el correo SMTP {NotificationType}.", notificationType);
+            return false;
         }
     }
 
