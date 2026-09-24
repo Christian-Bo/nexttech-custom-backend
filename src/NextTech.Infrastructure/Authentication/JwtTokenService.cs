@@ -4,6 +4,7 @@ using System.Text;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using NextTech.Application.Authentication;
+using NextTech.Application.Common.CurrentActor;
 using NextTech.Application.Interfaces;
 
 namespace NextTech.Infrastructure.Authentication;
@@ -18,9 +19,9 @@ public sealed class JwtTokenService(IOptions<JwtOptions> options) : ITokenServic
         {
             new Claim(JwtRegisteredClaimNames.Sub, buyer.IdUsuario.ToString()),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N")),
-            new Claim("actor_type", ActorTypes.Buyer),
-            new Claim("buyer_id", buyer.IdUsuario.ToString()),
-            new Claim("nickname", buyer.Nickname)
+            new Claim(ActorClaims.ActorType, ActorTypes.Buyer),
+            new Claim(ActorClaims.BuyerId, buyer.IdUsuario.ToString()),
+            new Claim(ActorClaims.Nickname, buyer.Nickname)
         };
         return Create(claims, ActorTypes.Buyer, false);
     }
@@ -31,10 +32,10 @@ public sealed class JwtTokenService(IOptions<JwtOptions> options) : ITokenServic
         {
             new Claim(JwtRegisteredClaimNames.Sub, user.IdUsuarioInterno.ToString()),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N")),
-            new Claim("actor_type", ActorTypes.Internal),
-            new Claim("internal_user_id", user.IdUsuarioInterno.ToString()),
+            new Claim(ActorClaims.ActorType, ActorTypes.Internal),
+            new Claim(ActorClaims.InternalUserId, user.IdUsuarioInterno.ToString()),
             new Claim(ClaimTypes.Role, user.Role),
-            new Claim("must_change_password", user.DebeCambiarPassword ? "true" : "false")
+            new Claim(ActorClaims.MustChangePassword, user.DebeCambiarPassword ? "true" : "false")
         };
         return Create(claims, ActorTypes.Internal, user.DebeCambiarPassword);
     }

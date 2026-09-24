@@ -7,11 +7,12 @@ public static class AuthPolicies
 {
     public static IServiceCollection AddNextTechAuthorization(this IServiceCollection services)
     {
+        services.AddScoped<IAuthorizationHandler, BuyerAccountAuthorizationHandler>();
         services.AddScoped<IAuthorizationHandler, InternalAccountAuthorizationHandler>();
 
         services.AddAuthorization(options =>
         {
-            options.AddPolicy("BuyerOnly", p => p.RequireClaim("actor_type", ActorTypes.Buyer));
+            options.AddPolicy("BuyerOnly", p => p.AddRequirements(new BuyerAccountRequirement()));
             options.AddPolicy("InternalAuthenticated", p => p.AddRequirements(
                 new InternalAccountRequirement(AllowPasswordChangeRequired: true)));
             options.AddPolicy("InternalOnly", p => p.AddRequirements(

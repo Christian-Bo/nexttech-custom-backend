@@ -1,8 +1,8 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using NextTech.Application.Common;
+using NextTech.Application.Common.CurrentActor;
 using NextTech.Application.Face;
 using NextTech.Application.Modules.Auth;
 
@@ -13,7 +13,8 @@ namespace NextTech.Api.Controllers;
 public sealed class AuthController(
     BuyerAuthService auth,
     IConfiguration configuration,
-    IHostEnvironment environment) : ControllerBase
+    IHostEnvironment environment,
+    ICurrentActor actor) : ControllerBase
 {
     [EnableRateLimiting("auth")]
     [HttpPost("register")]
@@ -38,8 +39,7 @@ public sealed class AuthController(
     [HttpPost("qr/rotate")]
     public async Task<object> RotateQr(CancellationToken ct)
     {
-        var id = GetBuyerId();
-        return new { qrCredential = await auth.RotateQrAsync(id, ct) };
+        return new { qrCredential = await auth.RotateQrAsync(actor.RequireIdCompradorExterno(), ct) };
     }
 
     [EnableRateLimiting("recovery")]
@@ -94,12 +94,6 @@ public sealed class AuthController(
             neutral,
             challenge,
             ct);
-    }
-
-    private long GetBuyerId()
-    {
-        var value = User.FindFirstValue("buyer_id");
-        return long.TryParse(value, out var id) ? id : throw new AppUnauthorizedException();
     }
 }
 

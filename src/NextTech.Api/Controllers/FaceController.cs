@@ -1,8 +1,7 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
-using NextTech.Application.Common;
+using NextTech.Application.Common.CurrentActor;
 using NextTech.Application.Face;
 using NextTech.Application.Modules.Face;
 
@@ -12,14 +11,16 @@ namespace NextTech.Api.Controllers;
 [Route("api/face")]
 [Authorize(Policy = "BuyerOnly")]
 [EnableRateLimiting("biometric")]
-public sealed class FaceController(FaceApplicationService face) : ControllerBase
+public sealed class FaceController(
+    FaceApplicationService face,
+    ICurrentActor actor) : ControllerBase
 {
     [HttpPost("challenge")]
     [ProducesResponseType(typeof(FaceChallengeResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public Task<FaceChallengeResult> Challenge(CancellationToken ct)
-        => face.CreateChallengeAsync(GetBuyerId(), ct);
+        => face.CreateChallengeAsync(actor.RequireIdCompradorExterno(), ct);
 
     [HttpPost("enroll")]
     [Consumes("multipart/form-data")]
@@ -37,7 +38,7 @@ public sealed class FaceController(FaceApplicationService face) : ControllerBase
         var challenge = await FaceRequestMapper.ReadImageAsync(request.ChallengeImage, "challengeImage", ct);
 
         var result = await face.EnrollBuyerAsync(
-            GetBuyerId(),
+            actor.RequireIdCompradorExterno(),
             request.ChallengeId,
             neutral,
             challenge,
@@ -60,7 +61,7 @@ public sealed class FaceController(FaceApplicationService face) : ControllerBase
         var challenge = await FaceRequestMapper.ReadImageAsync(request.ChallengeImage, "challengeImage", ct);
 
         return Ok(await face.VerifyBuyerAsync(
-            GetBuyerId(),
+            actor.RequireIdCompradorExterno(),
             request.ChallengeId,
             neutral,
             challenge,
@@ -77,16 +78,8 @@ public sealed class FaceController(FaceApplicationService face) : ControllerBase
         CancellationToken ct)
     {
         var image = await FaceRequestMapper.ReadImageAsync(request.Image, "image", ct);
-        var result = await face.SegmentForCardAsync(GetBuyerId(), image, ct);
+        var result = await face.SegmentForCardAsync(actor.RequireIdCompradorExterno(), image, ct);
         return File(result.Content, result.ContentType, result.FileName);
-    }
-
-    private long GetBuyerId()
-    {
-        var value = User.FindFirstValue("buyer_id");
-        return long.TryParse(value, out var id) && id > 0
-            ? id
-            : throw new AppUnauthorizedException();
     }
 }
 

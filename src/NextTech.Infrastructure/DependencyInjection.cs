@@ -56,6 +56,7 @@ public static class DependencyInjection
         services.AddSingleton<IPasswordService, PasswordService>();
         services.AddSingleton<ITokenService, JwtTokenService>();
         services.AddScoped<ICatalogService, CatalogService>();
+        services.AddScoped<ICatalogAdminService, CatalogAdminService>();
         services.AddScoped<IPersonalizationService, PersonalizationService>();
         services.AddScoped<ICartService, CartService>();
         services.AddScoped<IOrderService, OrderService>();
