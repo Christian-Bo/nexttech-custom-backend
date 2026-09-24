@@ -37,3 +37,6 @@ logs/
 # Temporary
 tmp/
 temp/
+
+# Colecciones locales (no van al repo)
+postman/
