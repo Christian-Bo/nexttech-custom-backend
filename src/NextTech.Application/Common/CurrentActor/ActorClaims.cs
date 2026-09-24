@@ -13,6 +13,7 @@ public static class ActorClaims
     public const string InternalUserId = "internal_user_id";
     public const string Nickname = "nickname";
     public const string Phone = "phone";
+    public const string MustChangePassword = "must_change_password";
 
     public static string Comprador => ActorTypes.Buyer;
 

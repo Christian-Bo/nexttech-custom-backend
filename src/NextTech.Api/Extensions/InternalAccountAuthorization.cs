@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using NextTech.Application.Authentication;
+using NextTech.Application.Common.CurrentActor;
 using NextTech.Application.Interfaces;
 
 namespace NextTech.Api.Extensions;
@@ -9,7 +10,9 @@ public sealed record InternalAccountRequirement(
     bool AllowPasswordChangeRequired,
     IReadOnlySet<string>? AllowedRoles = null) : IAuthorizationRequirement;
 
-public sealed class InternalAccountAuthorizationHandler(IInternalAuthRepository repository)
+public sealed class InternalAccountAuthorizationHandler(
+    IInternalAuthRepository repository,
+    IHttpContextAccessor httpContextAccessor)
     : AuthorizationHandler<InternalAccountRequirement>
 {
     protected override async Task HandleRequirementAsync(
@@ -17,17 +20,18 @@ public sealed class InternalAccountAuthorizationHandler(IInternalAuthRepository 
         InternalAccountRequirement requirement)
     {
         if (!string.Equals(
-                context.User.FindFirstValue("actor_type"),
+                context.User.FindFirstValue(ActorClaims.ActorType),
                 ActorTypes.Internal,
                 StringComparison.Ordinal))
         {
             return;
         }
 
-        if (!int.TryParse(context.User.FindFirstValue("internal_user_id"), out var userId))
+        if (!int.TryParse(context.User.FindFirstValue(ActorClaims.InternalUserId), out var userId))
             return;
 
-        var user = await repository.FindByIdAsync(userId, CancellationToken.None);
+        var ct = httpContextAccessor.HttpContext?.RequestAborted ?? CancellationToken.None;
+        var user = await repository.FindByIdAsync(userId, ct);
         if (user is null || !user.Activo)
             return;
 
@@ -40,7 +44,7 @@ public sealed class InternalAccountAuthorizationHandler(IInternalAuthRepository 
         if (!string.Equals(tokenRole, user.Role, StringComparison.Ordinal))
             return;
 
-        var mustChangeClaim = context.User.FindFirstValue("must_change_password");
+        var mustChangeClaim = context.User.FindFirstValue(ActorClaims.MustChangePassword);
         if (!bool.TryParse(mustChangeClaim, out var tokenMustChange) ||
             tokenMustChange != user.DebeCambiarPassword)
         {

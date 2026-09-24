@@ -1,8 +1,7 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
-using NextTech.Application.Common;
+using NextTech.Application.Common.CurrentActor;
 using NextTech.Application.Modules.Credentials;
 
 namespace NextTech.Api.Controllers;
@@ -11,7 +10,9 @@ namespace NextTech.Api.Controllers;
 [Route("api/credential")]
 [Authorize(Policy = "BuyerOnly")]
 [EnableRateLimiting("credential")]
-public sealed class BuyerCredentialController(BuyerCredentialService credentials) : ControllerBase
+public sealed class BuyerCredentialController(
+    BuyerCredentialService credentials,
+    ICurrentActor actor) : ControllerBase
 {
     [HttpPost("issue")]
     [Produces("application/pdf")]
@@ -23,17 +24,9 @@ public sealed class BuyerCredentialController(BuyerCredentialService credentials
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Issue(CancellationToken ct)
     {
-        var document = await credentials.IssueAsync(GetBuyerId(), ct);
+        var document = await credentials.IssueAsync(actor.RequireIdCompradorExterno(), ct);
         Response.Headers.CacheControl = "no-store";
         Response.Headers.Pragma = "no-cache";
         return File(document.Content, document.ContentType, document.FileName);
-    }
-
-    private long GetBuyerId()
-    {
-        var value = User.FindFirstValue("buyer_id");
-        return long.TryParse(value, out var id) && id > 0
-            ? id
-            : throw new AppUnauthorizedException();
     }
 }

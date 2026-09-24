@@ -1,8 +1,7 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using NextTech.Application.Authentication;
-using NextTech.Application.Common;
+using NextTech.Application.Common.CurrentActor;
 using NextTech.Application.Modules.Auth;
 
 namespace NextTech.Api.Controllers;
@@ -10,7 +9,9 @@ namespace NextTech.Api.Controllers;
 [ApiController]
 [Authorize(Policy = "AdminOnly")]
 [Route("api/internal/users")]
-public sealed class InternalUsersController(InternalUserAdministrationService users) : ControllerBase
+public sealed class InternalUsersController(
+    InternalUserAdministrationService users,
+    ICurrentActor actor) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType(typeof(PagedResult<InternalUserInfo>), StatusCodes.Status200OK)]
@@ -40,7 +41,7 @@ public sealed class InternalUsersController(InternalUserAdministrationService us
     {
         var created = await users.CreateAsync(
             request,
-            GetInternalUserId(),
+            actor.RequireIdUsuarioInterno(),
             HttpContext.Connection.RemoteIpAddress?.ToString(),
             ct);
 
@@ -59,7 +60,7 @@ public sealed class InternalUsersController(InternalUserAdministrationService us
         => users.UpdateAsync(
             userId,
             request,
-            GetInternalUserId(),
+            actor.RequireIdUsuarioInterno(),
             HttpContext.Connection.RemoteIpAddress?.ToString(),
             ct);
 
@@ -70,7 +71,7 @@ public sealed class InternalUsersController(InternalUserAdministrationService us
     public Task<InternalUserInfo> Deactivate(int userId, CancellationToken ct)
         => users.DeactivateAsync(
             userId,
-            GetInternalUserId(),
+            actor.RequireIdUsuarioInterno(),
             HttpContext.Connection.RemoteIpAddress?.ToString(),
             ct);
 
@@ -80,7 +81,7 @@ public sealed class InternalUsersController(InternalUserAdministrationService us
     public Task<InternalUserInfo> Activate(int userId, CancellationToken ct)
         => users.ActivateAsync(
             userId,
-            GetInternalUserId(),
+            actor.RequireIdUsuarioInterno(),
             HttpContext.Connection.RemoteIpAddress?.ToString(),
             ct);
 
@@ -90,7 +91,7 @@ public sealed class InternalUsersController(InternalUserAdministrationService us
     public Task<InternalUserInfo> Unlock(int userId, CancellationToken ct)
         => users.UnlockAsync(
             userId,
-            GetInternalUserId(),
+            actor.RequireIdUsuarioInterno(),
             HttpContext.Connection.RemoteIpAddress?.ToString(),
             ct);
 
@@ -105,15 +106,7 @@ public sealed class InternalUsersController(InternalUserAdministrationService us
         => users.ResetPasswordAsync(
             userId,
             request,
-            GetInternalUserId(),
+            actor.RequireIdUsuarioInterno(),
             HttpContext.Connection.RemoteIpAddress?.ToString(),
             ct);
-
-    private int GetInternalUserId()
-    {
-        var raw = User.FindFirstValue("internal_user_id");
-        return int.TryParse(raw, out var userId)
-            ? userId
-            : throw new AppUnauthorizedException();
-    }
 }
