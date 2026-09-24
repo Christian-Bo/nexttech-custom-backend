@@ -24,7 +24,8 @@ public sealed record OrdenDetalleDto(
     IReadOnlyList<DetalleOrdenDto> Items,
     IReadOnlyList<TrackingEventoDto> Tracking,
     IReadOnlyList<TrackingPasoDto> Pasos,
-    int? IdArchivoConstancia);
+    int? IdArchivoConstancia,
+    string QrPayload);
 
 public sealed record DetalleOrdenDto(
     string NombreProducto,
