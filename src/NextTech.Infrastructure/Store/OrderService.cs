@@ -1,9 +1,12 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using NextTech.Application.Common;
 using NextTech.Application.Common.Files;
 using NextTech.Application.DTOs.Orders;
+using NextTech.Application.External;
 using NextTech.Application.Interfaces;
 using NextTech.Application.Modules.Orders;
+using NextTech.Application.Payments;
 using NextTech.Domain.Enums;
 using NextTech.Domain.Exceptions;
 using NextTech.Infrastructure.Persistence.SqlServer;
@@ -15,7 +18,9 @@ namespace NextTech.Infrastructure.Store;
 public sealed class OrderService(
     NextTechDbContext db,
     IPurchaseReceiptPdfGenerator receiptPdf,
-    IOrderMailSender mail) : IOrderService
+    IOrderMailSender mail,
+    IRecurrenteCheckoutClient recurrente,
+    ICompradorCentralReader compradores) : IOrderService
 {
     public async Task<OrdenDetalleDto> CheckoutEfectivoAsync(
         long idCompradorExterno,
@@ -35,117 +40,11 @@ public sealed class OrderService(
         if (!string.Equals(request.MetodoPago, "EFECTIVO", StringComparison.OrdinalIgnoreCase))
         {
             throw new BusinessRuleException(
-                "Por ahora el checkout de negocio solo admite efectivo. La tarjeta la integra el módulo de pagos.");
+                "Este flujo solo admite efectivo. Para tarjeta usa el checkout de Recurrente.");
         }
 
-        var carrito = await db.Carrito
-            .FirstOrDefaultAsync(
-                c => c.IdCompradorExterno == idCompradorExterno
-                     && c.IdEstadoCarrito == (int)EstadoCarritoId.Activo,
-                cancellationToken);
-
-        if (carrito is null)
-        {
-            throw new NotFoundException("No hay un carrito activo para checkout.");
-        }
-
-        var detalles = await db.DetalleCarrito
-            .Where(d => d.IdCarrito == carrito.IdCarrito)
-            .ToListAsync(cancellationToken);
-
-        if (detalles.Count == 0)
-        {
-            throw new BusinessRuleException("El carrito está vacío.");
-        }
-
-        var area = await db.AreaEntrega
-            .FirstOrDefaultAsync(
-                a => a.IdAreaEntrega == request.IdAreaEntrega && a.Activo,
-                cancellationToken);
-
-        if (area is null)
-        {
-            throw new NotFoundException("El área de entrega no está disponible.");
-        }
-
-        var lineas = new List<(DetalleCarrito Detalle, Producto Producto, VarianteProducto Variante, string AtributosJson)>();
-
-        foreach (var detalle in detalles)
-        {
-            var variante = await (
-                from v in db.VarianteProducto
-                join p in db.Producto on v.IdProducto equals p.IdProducto
-                join c in db.Categoria on p.IdCategoria equals c.IdCategoria
-                where v.IdVariante == detalle.IdVariante && v.Activo && p.Activo && c.Activo
-                select new { Variante = v, Producto = p })
-                .FirstOrDefaultAsync(cancellationToken);
-
-            if (variante is null)
-            {
-                throw new BusinessRuleException("Hay un artículo del carrito que ya no está disponible.");
-            }
-
-            if (variante.Producto.PermitePersonalizacion)
-            {
-                if (detalle.IdPersonalizacion is null)
-                {
-                    throw new BusinessRuleException("Falta la personalización de un artículo.");
-                }
-
-                var personalizacion = await db.Personalizacion
-                    .FirstAsync(p => p.IdPersonalizacion == detalle.IdPersonalizacion, cancellationToken);
-
-                if (personalizacion.Bloqueada || personalizacion.IdVariante != detalle.IdVariante)
-                {
-                    throw new BusinessRuleException("La personalización no es válida para checkout.");
-                }
-
-                var zonasObligatorias = await db.ZonaPersonalizacion
-                    .Where(z => z.IdProducto == variante.Producto.IdProducto && z.Activo && z.EsObligatoria)
-                    .Select(z => z.IdZona)
-                    .ToListAsync(cancellationToken);
-
-                var zonasGuardadas = await db.PersonalizacionZona
-                    .Where(z => z.IdPersonalizacion == personalizacion.IdPersonalizacion)
-                    .Select(z => z.IdZona)
-                    .ToListAsync(cancellationToken);
-
-                if (zonasObligatorias.Except(zonasGuardadas).Any())
-                {
-                    throw new BusinessRuleException("La personalización no cubre Lado A y Lado B.");
-                }
-            }
-
-            var atributos = await (
-                from va in db.VarianteAtributo
-                join a in db.Atributo on va.IdAtributo equals a.IdAtributo
-                join valor in db.ValorAtributo on va.IdValorAtributo equals valor.IdValorAtributo
-                where va.IdVariante == variante.Variante.IdVariante
-                select new { a.Nombre, valor.Valor })
-                .ToListAsync(cancellationToken);
-
-            var atributosJson = JsonSerializer.Serialize(
-                atributos.ToDictionary(a => a.Nombre, a => a.Valor));
-
-            lineas.Add((detalle, variante.Producto, variante.Variante, atributosJson));
-        }
-
+        var prep = await PrepararCheckoutAsync(idCompradorExterno, request, cancellationToken);
         var ahora = DateTime.Now;
-        decimal total = 0m;
-        var lineasConPrecio = new List<(DetalleCarrito Detalle, Producto Producto, VarianteProducto Variante, string AtributosJson, decimal Unitario, decimal Subtotal)>();
-        foreach (var linea in lineas)
-        {
-            var unitario = linea.Producto.PrecioBase + linea.Variante.PrecioAdicional;
-            var subtotal = unitario * linea.Detalle.Cantidad;
-            total += subtotal;
-            lineasConPrecio.Add((linea.Detalle, linea.Producto, linea.Variante, linea.AtributosJson, unitario, subtotal));
-        }
-
-        if (total <= 0)
-        {
-            throw new BusinessRuleException("El total de la orden debe ser mayor que cero.");
-        }
-
         var codigoOrden = OrderCodeGenerator.Nuevo();
         var nicknameAplicado = Truncar(nickname, 50);
         var correoAplicado = Truncar(correo, 200);
@@ -153,10 +52,10 @@ public sealed class OrderService(
         var receipt = receiptPdf.Generate(new PurchaseReceiptPdfData(
             codigoOrden,
             nicknameAplicado,
-            area.Nombre,
+            prep.Area.Nombre,
             referencia,
-            total,
-            lineasConPrecio
+            prep.Total,
+            prep.Lineas
                 .Select(linea => new PurchaseReceiptLine(
                     linea.Producto.Nombre,
                     linea.Variante.Nombre,
@@ -190,12 +89,12 @@ public sealed class OrderService(
                 TelefonoCompradorAplicado = string.IsNullOrWhiteSpace(telefono)
                     ? null
                     : Truncar(telefono, 30),
-                IdCarritoOrigen = carrito.IdCarrito,
-                IdAreaEntrega = area.IdAreaEntrega,
-                NombreAreaAplicado = area.Nombre,
+                IdCarritoOrigen = prep.Carrito.IdCarrito,
+                IdAreaEntrega = prep.Area.IdAreaEntrega,
+                NombreAreaAplicado = prep.Area.Nombre,
                 ReferenciaEntrega = referencia,
                 IdEstadoOrdenActual = (int)EstadoOrdenId.OrdenGenerada,
-                Total = total,
+                Total = prep.Total,
                 IdArchivoConstancia = constancia.IdArchivo,
                 FechaCreacion = ahora
             };
@@ -203,7 +102,7 @@ public sealed class OrderService(
             db.Orden.Add(orden);
             await db.SaveChangesAsync(cancellationToken);
 
-            foreach (var linea in lineasConPrecio)
+            foreach (var linea in prep.Lineas)
             {
                 db.DetalleOrden.Add(new DetalleOrden
                 {
@@ -236,7 +135,7 @@ public sealed class OrderService(
                 IdOrden = orden.IdOrden,
                 IdMetodoPago = (int)MetodoPagoId.Efectivo,
                 IdEstadoPago = (int)EstadoPagoId.Pendiente,
-                Monto = total,
+                Monto = prep.Total,
                 FechaCreacion = ahora
             });
 
@@ -281,9 +180,9 @@ public sealed class OrderService(
                 ahora,
                 orden.CodigoOrden));
 
-            carrito.IdEstadoCarrito = (int)EstadoCarritoId.Procesado;
-            carrito.FechaActualizacion = ahora;
-            carrito.UltimaActividad = ahora;
+            prep.Carrito.IdEstadoCarrito = (int)EstadoCarritoId.Procesado;
+            prep.Carrito.FechaActualizacion = ahora;
+            prep.Carrito.UltimaActividad = ahora;
 
             await db.SaveChangesAsync(cancellationToken);
             await tx.CommitAsync(cancellationToken);
@@ -314,6 +213,141 @@ public sealed class OrderService(
             await tx.RollbackAsync(cancellationToken);
             throw;
         }
+    }
+
+    public async Task<CheckoutTarjetaDto> IniciarCheckoutTarjetaAsync(
+        long idCompradorExterno,
+        string correo,
+        CheckoutRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.ReferenciaEntrega))
+        {
+            throw new BusinessRuleException("La referencia de entrega es obligatoria.");
+        }
+
+        if (!string.Equals(request.MetodoPago, "TARJETA", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new BusinessRuleException("Este flujo solo admite tarjeta.");
+        }
+
+        if (!recurrente.Enabled)
+        {
+            throw new BusinessRuleException("El pago con tarjeta no está habilitado.");
+        }
+
+        var prep = await PrepararCheckoutAsync(idCompradorExterno, request, cancellationToken);
+        var centavos = MoneyCents.FromQuetzales(prep.Total);
+        var item = prep.Lineas[0].Producto.Nombre;
+        if (prep.Lineas.Count > 1)
+        {
+            item = "Pedido NextTech Custom";
+        }
+
+        var session = await recurrente.CreateCheckoutAsync(
+            new RecurrenteCheckoutCreateRequest(
+                Truncar(correo, 200),
+                Truncar(item, 80),
+                centavos,
+                new Dictionary<string, string>
+                {
+                    ["buyer_id"] = idCompradorExterno.ToString(),
+                    ["cart_id"] = prep.Carrito.IdCarrito.ToString(),
+                    ["area_id"] = prep.Area.IdAreaEntrega.ToString(),
+                    ["referencia"] = Truncar(request.ReferenciaEntrega, 300)
+                }),
+            cancellationToken);
+
+        return new CheckoutTarjetaDto(
+            session.Id,
+            session.CheckoutUrl,
+            prep.Total,
+            "GTQ",
+            session.Status);
+    }
+
+    public async Task<OrdenDetalleDto> ConfirmarCheckoutTarjetaAsync(
+        long? idCompradorEsperado,
+        string checkoutId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(checkoutId))
+        {
+            throw new BusinessRuleException("El identificador de checkout es obligatorio.");
+        }
+
+        var existente = await BuscarOrdenPorReferenciaPagoAsync(checkoutId.Trim(), cancellationToken);
+        if (existente is not null)
+        {
+            if (idCompradorEsperado is long esperado && existente.IdCompradorExterno != esperado)
+            {
+                throw new ForbiddenException("El pago no pertenece al comprador autenticado.");
+            }
+
+            return await MapearOrdenAsync(existente, cancellationToken);
+        }
+
+        var session = await recurrente.GetCheckoutAsync(checkoutId.Trim(), cancellationToken);
+        if (!EsCheckoutPagado(session.Status))
+        {
+            throw new BusinessRuleException("El pago con tarjeta aún no está confirmado.");
+        }
+
+        var buyerId = LeerMetadataLong(session.Metadata, "buyer_id");
+        var cartId = LeerMetadataInt(session.Metadata, "cart_id");
+        var areaId = LeerMetadataInt(session.Metadata, "area_id");
+        if (!session.Metadata.TryGetValue("referencia", out var referencia) ||
+            string.IsNullOrWhiteSpace(referencia))
+        {
+            throw new BusinessRuleException("El checkout de Recurrente no trae los datos de entrega.");
+        }
+
+        if (idCompradorEsperado is long autenticado && autenticado != buyerId)
+        {
+            throw new ForbiddenException("El pago no pertenece al comprador autenticado.");
+        }
+
+        var central = await compradores.ObtenerPorIdAsync(buyerId, cancellationToken)
+            ?? throw new NotFoundException("El comprador del pago no existe en Oracle.");
+
+        var request = new CheckoutRequest(areaId, referencia, "TARJETA");
+        CheckoutPreparacion prep;
+        try
+        {
+            prep = await PrepararCheckoutAsync(buyerId, request, cancellationToken);
+        }
+        catch (NotFoundException)
+        {
+            var yaProcesada = await db.Orden.AsNoTracking()
+                .FirstOrDefaultAsync(
+                    o => o.IdCarritoOrigen == cartId && o.IdCompradorExterno == buyerId,
+                    cancellationToken);
+            if (yaProcesada is not null)
+            {
+                return await MapearOrdenAsync(yaProcesada, cancellationToken);
+            }
+
+            throw;
+        }
+        if (prep.Carrito.IdCarrito != cartId)
+        {
+            throw new BusinessRuleException("El carrito del pago ya no coincide con el checkout.");
+        }
+
+        var centavos = MoneyCents.FromQuetzales(prep.Total);
+        if (session.AmountInCents != centavos)
+        {
+            throw new BusinessRuleException(
+                "El monto cobrado no coincide con el total actual del carrito.");
+        }
+
+        return await CrearOrdenTarjetaAsync(
+            buyerId,
+            central,
+            prep,
+            request.ReferenciaEntrega.Trim(),
+            session,
+            cancellationToken);
     }
 
     public async Task<IReadOnlyList<OrdenResumenDto>> ObtenerMisComprasAsync(
@@ -1142,6 +1176,365 @@ public sealed class OrderService(
             Detalle = detalle,
             FechaHora = fecha
         };
+    }
+
+    private sealed record CheckoutLine(
+        DetalleCarrito Detalle,
+        Producto Producto,
+        VarianteProducto Variante,
+        string AtributosJson,
+        decimal Unitario,
+        decimal Subtotal);
+
+    private sealed record CheckoutPreparacion(
+        Carrito Carrito,
+        AreaEntrega Area,
+        IReadOnlyList<CheckoutLine> Lineas,
+        decimal Total);
+
+    private async Task<CheckoutPreparacion> PrepararCheckoutAsync(
+        long idCompradorExterno,
+        CheckoutRequest request,
+        CancellationToken cancellationToken)
+    {
+        var carrito = await db.Carrito
+            .FirstOrDefaultAsync(
+                c => c.IdCompradorExterno == idCompradorExterno
+                     && c.IdEstadoCarrito == (int)EstadoCarritoId.Activo,
+                cancellationToken);
+
+        if (carrito is null)
+        {
+            throw new NotFoundException("No hay un carrito activo para checkout.");
+        }
+
+        var detalles = await db.DetalleCarrito
+            .Where(d => d.IdCarrito == carrito.IdCarrito)
+            .ToListAsync(cancellationToken);
+
+        if (detalles.Count == 0)
+        {
+            throw new BusinessRuleException("El carrito está vacío.");
+        }
+
+        var area = await db.AreaEntrega
+            .FirstOrDefaultAsync(
+                a => a.IdAreaEntrega == request.IdAreaEntrega && a.Activo,
+                cancellationToken);
+
+        if (area is null)
+        {
+            throw new NotFoundException("El área de entrega no está disponible.");
+        }
+
+        var lineas = new List<CheckoutLine>();
+        decimal total = 0m;
+
+        foreach (var detalle in detalles)
+        {
+            var variante = await (
+                from v in db.VarianteProducto
+                join p in db.Producto on v.IdProducto equals p.IdProducto
+                join c in db.Categoria on p.IdCategoria equals c.IdCategoria
+                where v.IdVariante == detalle.IdVariante && v.Activo && p.Activo && c.Activo
+                select new { Variante = v, Producto = p })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (variante is null)
+            {
+                throw new BusinessRuleException("Hay un artículo del carrito que ya no está disponible.");
+            }
+
+            if (variante.Producto.PermitePersonalizacion)
+            {
+                if (detalle.IdPersonalizacion is null)
+                {
+                    throw new BusinessRuleException("Falta la personalización de un artículo.");
+                }
+
+                var personalizacion = await db.Personalizacion
+                    .FirstAsync(p => p.IdPersonalizacion == detalle.IdPersonalizacion, cancellationToken);
+
+                if (personalizacion.Bloqueada || personalizacion.IdVariante != detalle.IdVariante)
+                {
+                    throw new BusinessRuleException("La personalización no es válida para checkout.");
+                }
+
+                var zonasObligatorias = await db.ZonaPersonalizacion
+                    .Where(z => z.IdProducto == variante.Producto.IdProducto && z.Activo && z.EsObligatoria)
+                    .Select(z => z.IdZona)
+                    .ToListAsync(cancellationToken);
+
+                var zonasGuardadas = await db.PersonalizacionZona
+                    .Where(z => z.IdPersonalizacion == personalizacion.IdPersonalizacion)
+                    .Select(z => z.IdZona)
+                    .ToListAsync(cancellationToken);
+
+                if (zonasObligatorias.Except(zonasGuardadas).Any())
+                {
+                    throw new BusinessRuleException("La personalización no cubre Lado A y Lado B.");
+                }
+            }
+
+            var atributos = await (
+                from va in db.VarianteAtributo
+                join a in db.Atributo on va.IdAtributo equals a.IdAtributo
+                join valor in db.ValorAtributo on va.IdValorAtributo equals valor.IdValorAtributo
+                where va.IdVariante == variante.Variante.IdVariante
+                select new { a.Nombre, valor.Valor })
+                .ToListAsync(cancellationToken);
+
+            var atributosJson = JsonSerializer.Serialize(
+                atributos.ToDictionary(a => a.Nombre, a => a.Valor));
+            var unitario = variante.Producto.PrecioBase + variante.Variante.PrecioAdicional;
+            var subtotal = unitario * detalle.Cantidad;
+            total += subtotal;
+            lineas.Add(new CheckoutLine(
+                detalle,
+                variante.Producto,
+                variante.Variante,
+                atributosJson,
+                unitario,
+                subtotal));
+        }
+
+        if (total <= 0)
+        {
+            throw new BusinessRuleException("El total de la orden debe ser mayor que cero.");
+        }
+
+        return new CheckoutPreparacion(carrito, area, lineas, total);
+    }
+
+    private async Task<OrdenDetalleDto> CrearOrdenTarjetaAsync(
+        long idCompradorExterno,
+        CompradorCentralDto central,
+        CheckoutPreparacion prep,
+        string referencia,
+        RecurrenteCheckoutSession session,
+        CancellationToken cancellationToken)
+    {
+        var ahora = DateTime.Now;
+        var codigoOrden = OrderCodeGenerator.Nuevo();
+        var nicknameAplicado = Truncar(central.Nickname, 50);
+        var correoAplicado = Truncar(central.Correo, 200);
+        var receipt = receiptPdf.Generate(new PurchaseReceiptPdfData(
+            codigoOrden,
+            nicknameAplicado,
+            prep.Area.Nombre,
+            referencia,
+            prep.Total,
+            prep.Lineas
+                .Select(linea => new PurchaseReceiptLine(
+                    linea.Producto.Nombre,
+                    linea.Variante.Nombre,
+                    linea.Detalle.Cantidad,
+                    linea.Subtotal))
+                .ToList(),
+            ahora,
+            PagoConTarjeta: true));
+
+        await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            var constancia = new Archivo
+            {
+                NombreOriginal = receipt.FileName,
+                TipoMime = receipt.ContentType,
+                Extension = ".pdf",
+                Datos = receipt.Content,
+                TamanoBytes = receipt.Content.Length,
+                FechaCreacion = ahora
+            };
+            db.Archivo.Add(constancia);
+            await db.SaveChangesAsync(cancellationToken);
+
+            var orden = new Orden
+            {
+                CodigoOrden = codigoOrden,
+                IdCompradorExterno = idCompradorExterno,
+                NicknameCompradorAplicado = nicknameAplicado,
+                CorreoCompradorAplicado = correoAplicado,
+                TelefonoCompradorAplicado = string.IsNullOrWhiteSpace(central.Telefono)
+                    ? null
+                    : Truncar(central.Telefono, 30),
+                IdCarritoOrigen = prep.Carrito.IdCarrito,
+                IdAreaEntrega = prep.Area.IdAreaEntrega,
+                NombreAreaAplicado = prep.Area.Nombre,
+                ReferenciaEntrega = Truncar(referencia, 300),
+                IdEstadoOrdenActual = (int)EstadoOrdenId.OrdenGenerada,
+                Total = prep.Total,
+                IdArchivoConstancia = constancia.IdArchivo,
+                FechaCreacion = ahora
+            };
+
+            db.Orden.Add(orden);
+            await db.SaveChangesAsync(cancellationToken);
+
+            foreach (var linea in prep.Lineas)
+            {
+                db.DetalleOrden.Add(new DetalleOrden
+                {
+                    IdOrden = orden.IdOrden,
+                    IdVariante = linea.Variante.IdVariante,
+                    IdPersonalizacion = linea.Detalle.IdPersonalizacion,
+                    Cantidad = linea.Detalle.Cantidad,
+                    NombreProductoAplicado = linea.Producto.Nombre,
+                    NombreVarianteAplicada = linea.Variante.Nombre,
+                    AtributosAplicadosJson = linea.AtributosJson,
+                    PrecioBaseAplicado = linea.Producto.PrecioBase,
+                    PrecioVarianteAplicado = linea.Variante.PrecioAdicional,
+                    PrecioUnitario = linea.Unitario,
+                    Subtotal = linea.Subtotal
+                });
+
+                if (linea.Detalle.IdPersonalizacion is not null)
+                {
+                    var personalizacion = await db.Personalizacion
+                        .FirstAsync(
+                            p => p.IdPersonalizacion == linea.Detalle.IdPersonalizacion,
+                            cancellationToken);
+                    personalizacion.Bloqueada = true;
+                    personalizacion.FechaActualizacion = ahora;
+                }
+            }
+
+            db.Pago.Add(new Pago
+            {
+                IdOrden = orden.IdOrden,
+                IdMetodoPago = (int)MetodoPagoId.Tarjeta,
+                IdEstadoPago = (int)EstadoPagoId.Pagado,
+                Monto = prep.Total,
+                ReferenciaTransaccion = Truncar(session.Id, 150),
+                FechaCreacion = ahora,
+                FechaPago = ahora
+            });
+
+            db.HistorialEstadoOrden.Add(CrearHistorial(
+                orden.IdOrden,
+                EstadoOrdenId.OrdenGenerada,
+                TipoActorId.Comprador,
+                idUsuarioInterno: null,
+                idCompradorExterno,
+                ahora,
+                "Checkout con tarjeta Recurrente"));
+
+            orden.IdEstadoOrdenActual = (int)EstadoOrdenId.EnElaboracion;
+            orden.FechaActualizacion = ahora;
+
+            db.HistorialEstadoOrden.Add(CrearHistorial(
+                orden.IdOrden,
+                EstadoOrdenId.EnElaboracion,
+                TipoActorId.Sistema,
+                idUsuarioInterno: null,
+                idCompradorExterno: null,
+                ahora,
+                "Elaboración iniciada"));
+
+            EncolarNotificaciones(
+                orden.IdOrden,
+                TipoNotificacionId.ConfirmacionCompra,
+                central.NotificaEmail,
+                central.NotificaWhatsApp,
+                central.Correo,
+                central.Telefono,
+                ahora);
+
+            db.BitacoraAuditoria.Add(CrearBitacora(
+                TipoActorId.Comprador,
+                idUsuarioInterno: null,
+                idCompradorExterno,
+                "CHECKOUT_TARJETA",
+                "Orden",
+                orden.IdOrden,
+                "EXITOSO",
+                ahora,
+                orden.CodigoOrden));
+
+            prep.Carrito.IdEstadoCarrito = (int)EstadoCarritoId.Procesado;
+            prep.Carrito.FechaActualizacion = ahora;
+            prep.Carrito.UltimaActividad = ahora;
+
+            await db.SaveChangesAsync(cancellationToken);
+            await tx.CommitAsync(cancellationToken);
+
+            await IntentarEnviarCorreoAsync(
+                orden.IdOrden,
+                TipoNotificacionId.ConfirmacionCompra,
+                ct => mail.SendPurchaseConfirmationAsync(
+                    correoAplicado,
+                    nicknameAplicado,
+                    orden.CodigoOrden,
+                    receipt.Content,
+                    ct),
+                cancellationToken);
+
+            return await ObtenerSeguimientoAsync(
+                idCompradorExterno,
+                orden.CodigoOrden,
+                cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            await tx.RollbackAsync(cancellationToken);
+            var duplicada = await BuscarOrdenPorReferenciaPagoAsync(session.Id, cancellationToken);
+            if (duplicada is not null)
+            {
+                return await MapearOrdenAsync(duplicada, cancellationToken);
+            }
+
+            throw new ConflictException("No se pudo generar la orden. Revisa si el carrito ya fue procesado.");
+        }
+        catch
+        {
+            await tx.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+
+    private async Task<Orden?> BuscarOrdenPorReferenciaPagoAsync(
+        string checkoutId,
+        CancellationToken cancellationToken)
+    {
+        var referencia = checkoutId.Trim();
+        var pago = await db.Pago.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.ReferenciaTransaccion == referencia, cancellationToken);
+
+        if (pago is null)
+        {
+            return null;
+        }
+
+        return await db.Orden.AsNoTracking()
+            .FirstOrDefaultAsync(o => o.IdOrden == pago.IdOrden, cancellationToken);
+    }
+
+    private static bool EsCheckoutPagado(string status)
+        => string.Equals(status, "paid", StringComparison.OrdinalIgnoreCase) ||
+           string.Equals(status, "succeeded", StringComparison.OrdinalIgnoreCase);
+
+    private static long LeerMetadataLong(IReadOnlyDictionary<string, string> metadata, string key)
+    {
+        if (!metadata.TryGetValue(key, out var raw) ||
+            !long.TryParse(raw, out var value) ||
+            value <= 0)
+        {
+            throw new BusinessRuleException("El checkout de Recurrente no trae los datos del comprador.");
+        }
+
+        return value;
+    }
+
+    private static int LeerMetadataInt(IReadOnlyDictionary<string, string> metadata, string key)
+    {
+        if (!metadata.TryGetValue(key, out var raw) ||
+            !int.TryParse(raw, out var value) ||
+            value <= 0)
+        {
+            throw new BusinessRuleException("El checkout de Recurrente no trae los datos de la orden.");
+        }
+
+        return value;
     }
 
     private static string Truncar(string valor, int max)

@@ -11,11 +11,13 @@ using NextTech.Application.Modules.Catalog;
 using NextTech.Application.Modules.Dashboard;
 using NextTech.Application.Modules.Orders;
 using NextTech.Application.Modules.Personalization;
+using NextTech.Application.Payments;
 using NextTech.Infrastructure.Authentication;
 using NextTech.Infrastructure.Credentials;
 using NextTech.Infrastructure.Email;
 using NextTech.Infrastructure.Face;
 using NextTech.Infrastructure.Health;
+using NextTech.Infrastructure.Payments;
 using NextTech.Infrastructure.Pdf;
 using NextTech.Infrastructure.Persistence.Oracle;
 using NextTech.Infrastructure.Persistence.Oracle.Repositories;
@@ -113,6 +115,35 @@ public static class DependencyInjection
             client.Timeout = TimeSpan.FromSeconds(faceOptions.TimeoutSeconds);
             if (!string.IsNullOrWhiteSpace(faceOptions.ApiKey) && !string.IsNullOrWhiteSpace(faceOptions.ApiKeyHeader))
                 client.DefaultRequestHeaders.TryAddWithoutValidation(faceOptions.ApiKeyHeader, faceOptions.ApiKey);
+        });
+
+        services.AddOptions<RecurrenteOptions>()
+            .Bind(configuration.GetSection(RecurrenteOptions.SectionName))
+            .Validate(
+                static options => !options.Enabled ||
+                    (Uri.TryCreate(options.BaseUrl, UriKind.Absolute, out var baseUri) &&
+                     (baseUri.Scheme == Uri.UriSchemeHttps || baseUri.Scheme == Uri.UriSchemeHttp) &&
+                     !string.IsNullOrWhiteSpace(options.PublicKey) &&
+                     !string.IsNullOrWhiteSpace(options.SecretKey) &&
+                     Uri.TryCreate(options.SuccessUrl, UriKind.Absolute, out var successUri) &&
+                     (successUri.Scheme == Uri.UriSchemeHttp || successUri.Scheme == Uri.UriSchemeHttps) &&
+                     Uri.TryCreate(options.CancelUrl, UriKind.Absolute, out var cancelUri) &&
+                     (cancelUri.Scheme == Uri.UriSchemeHttp || cancelUri.Scheme == Uri.UriSchemeHttps) &&
+                     options.TimeoutSeconds is >= 5 and <= 120),
+                "Recurrente:Enabled=true requiere BaseUrl, PublicKey, SecretKey, SuccessUrl, CancelUrl y TimeoutSeconds válidos.")
+            .ValidateOnStart();
+
+        var recurrente = configuration.GetSection(RecurrenteOptions.SectionName).Get<RecurrenteOptions>()
+            ?? new RecurrenteOptions();
+        var recurrenteBase = string.IsNullOrWhiteSpace(recurrente.BaseUrl)
+            ? "https://app.recurrente.com/"
+            : recurrente.BaseUrl.TrimEnd('/') + "/";
+        services.AddHttpClient<IRecurrenteCheckoutClient, RecurrenteCheckoutClient>(client =>
+        {
+            client.BaseAddress = new Uri(recurrenteBase);
+            client.Timeout = TimeSpan.FromSeconds(recurrente.TimeoutSeconds is >= 5 and <= 120
+                ? recurrente.TimeoutSeconds
+                : 30);
         });
 
         services.AddHealthChecks()
