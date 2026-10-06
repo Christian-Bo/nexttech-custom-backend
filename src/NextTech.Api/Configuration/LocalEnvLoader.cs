@@ -132,7 +132,6 @@ internal static class LocalEnvLoader
 
         Map("RECURRENTE_ENABLED", "Recurrente__Enabled");
         Map("RECURRENTE_BASE_URL", "Recurrente__BaseUrl");
-        Map("RECURRENTE_PUBLIC_KEY", "Recurrente__PublicKey");
         Map("RECURRENTE_SECRET_KEY", "Recurrente__SecretKey");
         Map("RECURRENTE_WEBHOOK_SECRET", "Recurrente__WebhookSecret");
         Map("RECURRENTE_SUCCESS_URL", "Recurrente__SuccessUrl");

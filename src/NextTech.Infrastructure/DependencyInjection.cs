@@ -123,14 +123,13 @@ public static class DependencyInjection
                 static options => !options.Enabled ||
                     (Uri.TryCreate(options.BaseUrl, UriKind.Absolute, out var baseUri) &&
                      (baseUri.Scheme == Uri.UriSchemeHttps || baseUri.Scheme == Uri.UriSchemeHttp) &&
-                     !string.IsNullOrWhiteSpace(options.PublicKey) &&
                      !string.IsNullOrWhiteSpace(options.SecretKey) &&
                      Uri.TryCreate(options.SuccessUrl, UriKind.Absolute, out var successUri) &&
                      (successUri.Scheme == Uri.UriSchemeHttp || successUri.Scheme == Uri.UriSchemeHttps) &&
                      Uri.TryCreate(options.CancelUrl, UriKind.Absolute, out var cancelUri) &&
                      (cancelUri.Scheme == Uri.UriSchemeHttp || cancelUri.Scheme == Uri.UriSchemeHttps) &&
                      options.TimeoutSeconds is >= 5 and <= 120),
-                "Recurrente:Enabled=true requiere BaseUrl, PublicKey, SecretKey, SuccessUrl, CancelUrl y TimeoutSeconds válidos.")
+                "Recurrente:Enabled=true requiere BaseUrl, SecretKey, SuccessUrl, CancelUrl y TimeoutSeconds válidos.")
             .ValidateOnStart();
 
         var recurrente = configuration.GetSection(RecurrenteOptions.SectionName).Get<RecurrenteOptions>()

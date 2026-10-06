@@ -85,8 +85,7 @@ public sealed class RecurrenteCheckoutClient(
             throw new AppValidationException("El pago con tarjeta no está habilitado.");
         }
 
-        if (string.IsNullOrWhiteSpace(_options.PublicKey) ||
-            string.IsNullOrWhiteSpace(_options.SecretKey) ||
+        if (string.IsNullOrWhiteSpace(_options.SecretKey) ||
             string.IsNullOrWhiteSpace(_options.SuccessUrl) ||
             string.IsNullOrWhiteSpace(_options.CancelUrl))
         {
@@ -96,7 +95,6 @@ public sealed class RecurrenteCheckoutClient(
 
     private void AddKeys(HttpRequestMessage message)
     {
-        message.Headers.TryAddWithoutValidation("X-PUBLIC-KEY", _options.PublicKey);
         message.Headers.TryAddWithoutValidation("X-SECRET-KEY", _options.SecretKey);
     }
 

@@ -41,6 +41,8 @@ services:
       AllowedClientOrigins__1: ${FRONTEND_ORIGIN_1:-}
       AllowedClientOrigins__2: ${FRONTEND_ORIGIN_2:-}
       AllowedClientOrigins__3: ${FRONTEND_ORIGIN_3:-}
+      AllowedClientOrigins__4: ${FRONTEND_ORIGIN_4:-}
+      AllowedClientOrigins__5: ${FRONTEND_ORIGIN_5:-}
 
       Smtp__Enabled: ${SMTP_ENABLED:-false}
       Smtp__Host: ${SMTP_HOST:-smtp.gmail.com}
@@ -60,6 +62,14 @@ services:
       FaceApi__ApiKey: ${FACE_API_KEY:-}
       FaceApi__ApiKeyHeader: ${FACE_API_KEY_HEADER:-X-Internal-Api-Key}
       FaceApi__TimeoutSeconds: ${FACE_API_TIMEOUT_SECONDS:-30}
+
+      Recurrente__Enabled: ${RECURRENTE_ENABLED:-false}
+      Recurrente__BaseUrl: ${RECURRENTE_BASE_URL:-https://app.recurrente.com}
+      Recurrente__SecretKey: ${RECURRENTE_SECRET_KEY:-}
+      Recurrente__WebhookSecret: ${RECURRENTE_WEBHOOK_SECRET:-}
+      Recurrente__SuccessUrl: ${RECURRENTE_SUCCESS_URL:-}
+      Recurrente__CancelUrl: ${RECURRENTE_CANCEL_URL:-}
+      Recurrente__TimeoutSeconds: ${RECURRENTE_TIMEOUT_SECONDS:-30}
 
     ports:
       - "8080:8080"
