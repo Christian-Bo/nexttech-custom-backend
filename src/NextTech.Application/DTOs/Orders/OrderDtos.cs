@@ -10,7 +10,10 @@ public sealed record CheckoutTarjetaDto(
     string CheckoutUrl,
     decimal Total,
     string Moneda,
-    string Estado);
+    string Estado)
+{
+    public string Url => CheckoutUrl;
+}
 
 public sealed record ConfirmarPagoTarjetaRequest(string CheckoutId);
 
