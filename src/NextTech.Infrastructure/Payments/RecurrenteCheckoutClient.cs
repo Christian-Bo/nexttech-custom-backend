@@ -113,28 +113,13 @@ public sealed class RecurrenteCheckoutClient(
             throw new AppDependencyException("Recurrente no pudo procesar el pago con tarjeta.");
         }
 
-        RecurrenteCheckoutBody? body;
-        try
-        {
-            body = JsonSerializer.Deserialize<RecurrenteCheckoutBody>(json, Json);
-        }
-        catch (JsonException)
+        var session = RecurrenteCheckoutParser.TryParse(json);
+        if (session is null)
         {
             throw new AppDependencyException("Recurrente devolvió una respuesta inválida.");
         }
 
-        if (body is null || string.IsNullOrWhiteSpace(body.Id))
-        {
-            throw new AppDependencyException("Recurrente no devolvió el checkout.");
-        }
-
-        return new RecurrenteCheckoutSession(
-            body.Id,
-            body.CheckoutUrl ?? string.Empty,
-            body.Status ?? string.Empty,
-            body.AmountInCents,
-            string.IsNullOrWhiteSpace(body.Currency) ? "GTQ" : body.Currency,
-            body.Metadata ?? new Dictionary<string, string>());
+        return session;
     }
 
     private sealed record RecurrenteCreateBody(
@@ -149,14 +134,4 @@ public sealed class RecurrenteCheckoutClient(
         int AmountInCents,
         string Currency,
         int Quantity);
-
-    private sealed class RecurrenteCheckoutBody
-    {
-        public string? Id { get; set; }
-        public string? CheckoutUrl { get; set; }
-        public string? Status { get; set; }
-        public int AmountInCents { get; set; }
-        public string? Currency { get; set; }
-        public Dictionary<string, string>? Metadata { get; set; }
-    }
 }
