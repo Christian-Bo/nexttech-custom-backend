@@ -13,7 +13,8 @@ public sealed record PurchaseReceiptPdfData(
     string ReferenciaEntrega,
     decimal Total,
     IReadOnlyList<PurchaseReceiptLine> Items,
-    DateTime FechaCreacion);
+    DateTime FechaCreacion,
+    bool PagoConTarjeta = false);
 
 public sealed record PurchaseReceiptDocument(
     byte[] Content,

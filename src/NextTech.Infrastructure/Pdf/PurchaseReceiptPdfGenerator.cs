@@ -84,7 +84,9 @@ public sealed class PurchaseReceiptPdfGenerator : IPurchaseReceiptPdfGenerator
                             .SemiBold().FontSize(12);
 
                         column.Item().PaddingTop(8).Text(
-                            "El repartidor escanea este QR para localizar y entregar el pedido. Pago en efectivo al recibir.")
+                            data.PagoConTarjeta
+                                ? "El repartidor escanea este QR para localizar y entregar el pedido. El pago con tarjeta ya fue confirmado."
+                                : "El repartidor escanea este QR para localizar y entregar el pedido. Pago en efectivo al recibir.")
                             .FontSize(8).FontColor(Colors.Grey.Darken1);
                     });
                 });
