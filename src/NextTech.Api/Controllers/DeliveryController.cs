@@ -16,7 +16,9 @@ public sealed class DeliveryController(
     [HttpGet("available")]
     public async Task<IActionResult> Disponibles(CancellationToken cancellationToken)
     {
-        return Ok(await orders.ListarDisponiblesEntregaAsync(cancellationToken));
+        return Ok(await orders.ListarDisponiblesEntregaAsync(
+            actor.RequireIdUsuarioInterno(),
+            cancellationToken));
     }
 
     [HttpGet("orders/{codigo}")]

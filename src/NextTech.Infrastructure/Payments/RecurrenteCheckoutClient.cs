@@ -30,6 +30,12 @@ public sealed class RecurrenteCheckoutClient(
     {
         EnsureConfigured();
 
+        var customer = await EnsureCustomerAsync(
+            request.CustomerEmail,
+            request.CustomerName,
+            request.CustomerPhone,
+            cancellationToken);
+
         using var message = new HttpRequestMessage(HttpMethod.Post, "api/checkouts")
         {
             Content = JsonContent.Create(
@@ -44,7 +50,9 @@ public sealed class RecurrenteCheckoutClient(
                     _options.SuccessUrl,
                     _options.CancelUrl,
                     request.CustomerEmail,
-                    request.Metadata),
+                    request.Metadata,
+                    customer?.Id,
+                    customer?.UserId),
                 options: Json)
         };
         AddKeys(message);
@@ -98,6 +106,78 @@ public sealed class RecurrenteCheckoutClient(
         message.Headers.TryAddWithoutValidation("X-SECRET-KEY", _options.SecretKey);
     }
 
+    private async Task<RecurrenteCustomerRef?> EnsureCustomerAsync(
+        string email,
+        string? name,
+        string? phone,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return null;
+        }
+
+        var nombre = string.IsNullOrWhiteSpace(name) ? null : name.Trim();
+        var telefono = string.IsNullOrWhiteSpace(phone) ? null : phone.Trim();
+
+        try
+        {
+            using var create = new HttpRequestMessage(HttpMethod.Post, "api/customers")
+            {
+                Content = JsonContent.Create(
+                    new RecurrenteCustomerCreateBody(email.Trim(), nombre, nombre, telefono),
+                    options: Json)
+            };
+            AddKeys(create);
+
+            using var created = await http.SendAsync(create, cancellationToken);
+            var createdJson = await created.Content.ReadAsStringAsync(cancellationToken);
+            if (!created.IsSuccessStatusCode)
+            {
+                logger.LogWarning(
+                    "Recurrente respondió {Status} al crear el cliente del checkout.",
+                    (int)created.StatusCode);
+                return null;
+            }
+
+            var customer = RecurrenteCheckoutParser.TryParseCustomer(createdJson);
+            if (customer is null)
+            {
+                return null;
+            }
+
+            if (nombre is null && telefono is null)
+            {
+                return customer;
+            }
+
+            using var update = new HttpRequestMessage(
+                HttpMethod.Put,
+                $"api/customers/{Uri.EscapeDataString(customer.Id)}")
+            {
+                Content = JsonContent.Create(
+                    new RecurrenteCustomerUpdateBody(nombre, telefono),
+                    options: Json)
+            };
+            AddKeys(update);
+
+            using var updated = await http.SendAsync(update, cancellationToken);
+            if (!updated.IsSuccessStatusCode)
+            {
+                logger.LogWarning(
+                    "Recurrente respondió {Status} al actualizar el cliente del checkout.",
+                    (int)updated.StatusCode);
+            }
+
+            return customer;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "No se pudo precargar el cliente en Recurrente.");
+            return null;
+        }
+    }
+
     private async Task<RecurrenteCheckoutSession> ReadSessionAsync(
         HttpResponseMessage response,
         string operacion,
@@ -127,11 +207,23 @@ public sealed class RecurrenteCheckoutClient(
         string SuccessUrl,
         string CancelUrl,
         string CustomerEmail,
-        IReadOnlyDictionary<string, string> Metadata);
+        IReadOnlyDictionary<string, string> Metadata,
+        string? CustomerId,
+        string? UserId);
 
     private sealed record RecurrenteItem(
         string Name,
         int AmountInCents,
         string Currency,
         int Quantity);
+
+    private sealed record RecurrenteCustomerCreateBody(
+        string Email,
+        string? FullName,
+        string? Name,
+        string? Phone);
+
+    private sealed record RecurrenteCustomerUpdateBody(
+        string? Name,
+        string? Phone);
 }

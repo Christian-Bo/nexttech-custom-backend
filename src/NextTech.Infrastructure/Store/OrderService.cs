@@ -218,6 +218,8 @@ public sealed class OrderService(
     public async Task<CheckoutTarjetaDto> IniciarCheckoutTarjetaAsync(
         long idCompradorExterno,
         string correo,
+        string nickname,
+        string? telefono,
         CheckoutRequest request,
         CancellationToken cancellationToken)
     {
@@ -247,6 +249,8 @@ public sealed class OrderService(
         var session = await recurrente.CreateCheckoutAsync(
             new RecurrenteCheckoutCreateRequest(
                 Truncar(correo, 200),
+                Truncar(nickname, 80),
+                string.IsNullOrWhiteSpace(telefono) ? null : Truncar(telefono, 30),
                 Truncar(item, 80),
                 centavos,
                 new Dictionary<string, string>
@@ -407,13 +411,32 @@ public sealed class OrderService(
             cancellationToken);
     }
 
-    public Task<IReadOnlyList<OrdenColaDto>> ListarDisponiblesEntregaAsync(
+    public async Task<IReadOnlyList<OrdenColaDto>> ListarDisponiblesEntregaAsync(
+        int idRepartidor,
         CancellationToken cancellationToken)
     {
-        return ListarColaAsync(
-            (int)EstadoOrdenId.ListoParaEntrega,
-            soloSinRepartidor: true,
-            cancellationToken);
+        var nombres = await db.EstadoOrden.AsNoTracking()
+            .ToDictionaryAsync(e => e.IdEstadoOrden, e => e.Nombre, cancellationToken);
+
+        var ordenes = await db.Orden.AsNoTracking()
+            .Where(o =>
+                (o.IdEstadoOrdenActual == (int)EstadoOrdenId.ListoParaEntrega
+                 && o.IdRepartidorAsignado == null)
+                || (o.IdRepartidorAsignado == idRepartidor
+                    && (o.IdEstadoOrdenActual == (int)EstadoOrdenId.EnEntrega
+                        || o.IdEstadoOrdenActual == (int)EstadoOrdenId.Entregado
+                        || o.IdEstadoOrdenActual == (int)EstadoOrdenId.CompradorNoEncontrado)))
+            .OrderBy(o => o.FechaCreacion)
+            .ToListAsync(cancellationToken);
+
+        return ordenes
+            .Select(o => new OrdenColaDto(
+                o.CodigoOrden,
+                o.FechaCreacion,
+                o.Total,
+                nombres[o.IdEstadoOrdenActual],
+                o.NombreAreaAplicado))
+            .ToList();
     }
 
     public async Task<OrdenEntregaDto> BuscarParaEntregaAsync(

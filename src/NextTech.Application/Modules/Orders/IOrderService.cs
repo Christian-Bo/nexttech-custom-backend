@@ -17,6 +17,8 @@ public interface IOrderService
     Task<CheckoutTarjetaDto> IniciarCheckoutTarjetaAsync(
         long idCompradorExterno,
         string correo,
+        string nickname,
+        string? telefono,
         CheckoutRequest request,
         CancellationToken cancellationToken);
 
@@ -65,6 +67,7 @@ public interface IOrderService
         CancellationToken cancellationToken);
 
     Task<IReadOnlyList<OrdenColaDto>> ListarDisponiblesEntregaAsync(
+        int idRepartidor,
         CancellationToken cancellationToken);
 
     Task<OrdenEntregaDto> BuscarParaEntregaAsync(

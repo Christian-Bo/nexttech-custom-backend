@@ -47,4 +47,23 @@ public sealed class RecurrenteCheckoutParserTests
         Assert.Equal("https://app.recurrente.com/checkout-session/ch_new", session.CheckoutUrl);
         Assert.Equal(2000, session.AmountInCents);
     }
+
+    [Fact]
+    public void TryParseCustomer_ReadsIdAndUserId()
+    {
+        const string json = """
+            {
+              "id": "cus_abc123",
+              "user_id": "usr_xyz789",
+              "email": "cliente@ejemplo.com",
+              "name": "Maria Garcia"
+            }
+            """;
+
+        var customer = RecurrenteCheckoutParser.TryParseCustomer(json);
+
+        Assert.NotNull(customer);
+        Assert.Equal("cus_abc123", customer.Id);
+        Assert.Equal("usr_xyz789", customer.UserId);
+    }
 }

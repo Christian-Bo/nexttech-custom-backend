@@ -4,6 +4,8 @@ using NextTech.Application.Payments;
 
 namespace NextTech.Infrastructure.Payments;
 
+public sealed record RecurrenteCustomerRef(string Id, string? UserId);
+
 public static class RecurrenteCheckoutParser
 {
     private static readonly JsonSerializerOptions Json = new()
@@ -42,6 +44,31 @@ public static class RecurrenteCheckoutParser
             ReadAmountInCents(body.TotalInCents, body.AmountInCents, body.SubtotalInCents),
             string.IsNullOrWhiteSpace(body.Currency) ? "GTQ" : body.Currency,
             ReadMetadata(body.Metadata));
+    }
+
+    public static RecurrenteCustomerRef? TryParseCustomer(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return null;
+        }
+
+        RecurrenteCustomerBody? body;
+        try
+        {
+            body = JsonSerializer.Deserialize<RecurrenteCustomerBody>(json, Json);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+
+        if (body is null || string.IsNullOrWhiteSpace(body.Id))
+        {
+            return null;
+        }
+
+        return new RecurrenteCustomerRef(body.Id, body.UserId);
     }
 
     public static int ReadAmountInCents(int totalInCents, int amountInCents, int subtotalInCents)
@@ -86,5 +113,11 @@ public static class RecurrenteCheckoutParser
         public int SubtotalInCents { get; set; }
         public string? Currency { get; set; }
         public Dictionary<string, JsonElement>? Metadata { get; set; }
+    }
+
+    private sealed class RecurrenteCustomerBody
+    {
+        public string? Id { get; set; }
+        public string? UserId { get; set; }
     }
 }
