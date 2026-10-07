@@ -23,6 +23,8 @@ public interface IRecurrenteCheckoutClient
 
 public sealed record RecurrenteCheckoutCreateRequest(
     string CustomerEmail,
+    string? CustomerName,
+    string? CustomerPhone,
     string ItemName,
     int AmountInCents,
     IReadOnlyDictionary<string, string> Metadata);

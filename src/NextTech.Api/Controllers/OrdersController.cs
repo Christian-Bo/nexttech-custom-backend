@@ -31,6 +31,8 @@ public sealed class OrdersController(
             var sesion = await orders.IniciarCheckoutTarjetaAsync(
                 id,
                 central.Correo,
+                central.Nickname,
+                central.Telefono,
                 request,
                 cancellationToken);
 

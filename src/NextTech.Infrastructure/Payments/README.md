@@ -51,4 +51,6 @@ RecurrenteCheckout.load({
 
 4. Confirm responde **201** con la orden (tracking, PDF, QR). Si el webhook ya la creó, el confirm es idempotente y devuelve la misma orden.
 
+El backend precarga en Recurrente el correo, el nickname y el teléfono del comprador (Oracle). El widget no puede setear el país; Guatemala sale porque la moneda es GTQ.
+
 Efectivo no cambia: `metodoPago: "EFECTIVO"` sigue creando la orden en el mismo `POST /api/checkout`.
