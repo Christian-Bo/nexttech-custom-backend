@@ -5,6 +5,18 @@ public sealed record CheckoutRequest(
     string ReferenciaEntrega,
     string MetodoPago);
 
+public sealed record CheckoutTarjetaDto(
+    string CheckoutId,
+    string CheckoutUrl,
+    decimal Total,
+    string Moneda,
+    string Estado)
+{
+    public string Url => CheckoutUrl;
+}
+
+public sealed record ConfirmarPagoTarjetaRequest(string CheckoutId);
+
 public sealed record OrdenResumenDto(
     string CodigoOrden,
     DateTime FechaCreacion,

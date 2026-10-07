@@ -14,6 +14,19 @@ public interface IOrderService
         CheckoutRequest request,
         CancellationToken cancellationToken);
 
+    Task<CheckoutTarjetaDto> IniciarCheckoutTarjetaAsync(
+        long idCompradorExterno,
+        string correo,
+        string nickname,
+        string? telefono,
+        CheckoutRequest request,
+        CancellationToken cancellationToken);
+
+    Task<OrdenDetalleDto> ConfirmarCheckoutTarjetaAsync(
+        long? idCompradorEsperado,
+        string checkoutId,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<OrdenResumenDto>> ObtenerMisComprasAsync(
         long idCompradorExterno,
         CancellationToken cancellationToken);
@@ -54,6 +67,7 @@ public interface IOrderService
         CancellationToken cancellationToken);
 
     Task<IReadOnlyList<OrdenColaDto>> ListarDisponiblesEntregaAsync(
+        int idRepartidor,
         CancellationToken cancellationToken);
 
     Task<OrdenEntregaDto> BuscarParaEntregaAsync(

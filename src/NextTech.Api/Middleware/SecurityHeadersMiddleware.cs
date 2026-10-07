@@ -32,6 +32,8 @@ public sealed class SecurityHeadersMiddleware(RequestDelegate next)
            path.StartsWithSegments("/api/cart") ||
            path.StartsWithSegments("/api/personalizations") ||
            path.StartsWithSegments("/api/checkout") ||
+           path.StartsWithSegments("/api/payments") ||
+           path.StartsWithSegments("/api/webhooks") ||
            path.StartsWithSegments("/api/orders") ||
            path.StartsWithSegments("/api/delivery") ||
            path.StartsWithSegments("/api/dashboard") ||

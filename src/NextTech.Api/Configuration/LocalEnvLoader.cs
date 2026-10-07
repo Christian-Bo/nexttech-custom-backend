@@ -129,6 +129,14 @@ internal static class LocalEnvLoader
         Map("FACE_API_KEY", "FaceApi__ApiKey");
         Map("FACE_API_KEY_HEADER", "FaceApi__ApiKeyHeader");
         Map("FACE_API_TIMEOUT_SECONDS", "FaceApi__TimeoutSeconds");
+
+        Map("RECURRENTE_ENABLED", "Recurrente__Enabled");
+        Map("RECURRENTE_BASE_URL", "Recurrente__BaseUrl");
+        Map("RECURRENTE_SECRET_KEY", "Recurrente__SecretKey");
+        Map("RECURRENTE_WEBHOOK_SECRET", "Recurrente__WebhookSecret");
+        Map("RECURRENTE_SUCCESS_URL", "Recurrente__SuccessUrl");
+        Map("RECURRENTE_CANCEL_URL", "Recurrente__CancelUrl");
+        Map("RECURRENTE_TIMEOUT_SECONDS", "Recurrente__TimeoutSeconds");
     }
 
     private static void Map(string source, string target)

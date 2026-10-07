@@ -25,6 +25,20 @@ public sealed class OrdersController(
         var central = await compradores.ObtenerPorIdAsync(id, cancellationToken)
             ?? throw new NotFoundException("El comprador autenticado no existe en Oracle.");
 
+        var metodo = request.MetodoPago?.Trim();
+        if (string.Equals(metodo, "TARJETA", StringComparison.OrdinalIgnoreCase))
+        {
+            var sesion = await orders.IniciarCheckoutTarjetaAsync(
+                id,
+                central.Correo,
+                central.Nickname,
+                central.Telefono,
+                request,
+                cancellationToken);
+
+            return Ok(sesion);
+        }
+
         var orden = await orders.CheckoutEfectivoAsync(
             id,
             central.Nickname,
