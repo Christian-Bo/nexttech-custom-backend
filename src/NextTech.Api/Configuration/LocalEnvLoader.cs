@@ -121,6 +121,12 @@ internal static class LocalEnvLoader
         Map("SMTP_TIMEOUT_SECONDS", "Smtp__TimeoutSeconds");
         Map("SMTP_RECOVERY_URL_BASE", "Smtp__RecoveryUrlBase");
 
+        Map("WHATSAPP_ENABLED", "WhatsApp__Enabled");
+        Map("WHATSAPP_API_BASE_URL", "WhatsApp__BaseUrl");
+        Map("WHATSAPP_API_KEY", "WhatsApp__ApiKey");
+        Map("WHATSAPP_API_KEY_HEADER", "WhatsApp__ApiKeyHeader");
+        Map("WHATSAPP_API_TIMEOUT_SECONDS", "WhatsApp__TimeoutSeconds");
+
         Map("FACE_API_BASE_URL", "FaceApi__BaseUrl");
         Map("FACE_API_ENROLL_PATH", "FaceApi__EnrollPath");
         Map("FACE_API_SEGMENT_PATH", "FaceApi__SegmentPath");

@@ -55,10 +55,9 @@ public sealed record BuyerRegistrationData(
 
 public interface IRegistrationNotificationSender
 {
-    Task SendRegistrationCredentialAsync(
+    Task SendRegistrationWelcomeAsync(
         string email,
         string nickname,
-        string qrCredential,
         CancellationToken ct);
 }
 
