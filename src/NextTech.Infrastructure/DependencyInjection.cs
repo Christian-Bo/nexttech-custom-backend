@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using NextTech.Application.Interfaces;
 using NextTech.Application.Modules.Cart;
@@ -24,6 +25,7 @@ using NextTech.Infrastructure.Persistence.Oracle.Repositories;
 using NextTech.Infrastructure.Persistence.SqlServer;
 using NextTech.Infrastructure.Persistence.SqlServer.Repositories;
 using NextTech.Infrastructure.Store;
+using NextTech.Infrastructure.WhatsApp;
 using QuestPDF.Infrastructure;
 
 namespace NextTech.Infrastructure;
@@ -87,6 +89,38 @@ public static class DependencyInjection
         services.AddSingleton<IRecoveryNotificationSender>(sp => sp.GetRequiredService<SmtpNotificationSender>());
         services.AddSingleton<IBuyerCredentialNotificationSender>(sp => sp.GetRequiredService<SmtpNotificationSender>());
         services.AddSingleton<IOrderMailSender>(sp => sp.GetRequiredService<SmtpNotificationSender>());
+
+        services.AddOptions<WhatsAppOptions>()
+            .Bind(configuration.GetSection(WhatsAppOptions.SectionName))
+            .Validate(
+                static options => !options.Enabled ||
+                    (Uri.TryCreate(options.BaseUrl, UriKind.Absolute, out var baseUri) &&
+                     baseUri.Scheme == Uri.UriSchemeHttps &&
+                     !string.IsNullOrWhiteSpace(options.ApiKey) &&
+                     !string.IsNullOrWhiteSpace(options.ApiKeyHeader) &&
+                     options.TimeoutSeconds is >= 5 and <= 120),
+                "WhatsApp:Enabled=true requiere BaseUrl HTTPS, ApiKey, ApiKeyHeader y TimeoutSeconds entre 5 y 120.")
+            .ValidateOnStart();
+
+        services.AddHttpClient<IWhatsAppNotificationSender, WhatsAppNotificationSender>((sp, client) =>
+        {
+            var options = sp.GetRequiredService<IOptions<WhatsAppOptions>>().Value;
+            var baseUrl = Uri.TryCreate(options.BaseUrl, UriKind.Absolute, out var configuredBaseUri)
+                ? new Uri(configuredBaseUri.ToString().TrimEnd('/') + "/")
+                : new Uri("http://127.0.0.1/");
+
+            client.BaseAddress = baseUrl;
+            client.Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds is >= 5 and <= 120
+                ? options.TimeoutSeconds
+                : 30);
+
+            if (options.Enabled &&
+                !string.IsNullOrWhiteSpace(options.ApiKey) &&
+                !string.IsNullOrWhiteSpace(options.ApiKeyHeader))
+            {
+                client.DefaultRequestHeaders.TryAddWithoutValidation(options.ApiKeyHeader, options.ApiKey);
+            }
+        });
 
         services.AddOptions<FaceApiOptions>()
             .Bind(configuration.GetSection(FaceApiOptions.SectionName))

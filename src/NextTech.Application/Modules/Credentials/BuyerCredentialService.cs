@@ -3,6 +3,7 @@ using System.Text;
 using NextTech.Application.Common;
 using NextTech.Application.Credentials;
 using NextTech.Application.Interfaces;
+using NextTech.Application.Notifications;
 
 namespace NextTech.Application.Modules.Credentials;
 
@@ -10,9 +11,26 @@ public sealed class BuyerCredentialService(
     ICentralIdentityGateway gateway,
     IBuyerFaceEnrollmentStore enrollmentStore,
     IBuyerCredentialPdfGenerator pdfGenerator,
-    IBuyerCredentialNotificationSender notificationSender)
+    IBuyerCredentialNotificationSender notificationSender,
+    IWhatsAppNotificationSender whatsAppNotifications)
 {
-    public async Task<BuyerCredentialDocument> IssueAsync(long buyerId, CancellationToken ct)
+    public Task<BuyerCredentialDocument> IssueAsync(long buyerId, CancellationToken ct)
+        => IssueInternalAsync(buyerId, requestedChannels: null, ct: ct);
+
+    public Task<BuyerCredentialDocument> ReissueAsync(
+        long buyerId,
+        NotificationDeliveryRequest request,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var channels = NotificationDeliveryChannels.Parse(request.Channel);
+        return IssueInternalAsync(buyerId, channels, ct);
+    }
+
+    private async Task<BuyerCredentialDocument> IssueInternalAsync(
+        long buyerId,
+        (bool Email, bool WhatsApp)? requestedChannels,
+        CancellationToken ct)
     {
         var buyer = await gateway.FindByIdAsync(buyerId, ct)
             ?? throw new AppNotFoundException("Comprador no encontrado.");
@@ -21,6 +39,16 @@ public sealed class BuyerCredentialService(
             throw new AppForbiddenException("La cuenta está inactiva.");
         if (buyer.Bloqueado)
             throw new AppForbiddenException("La cuenta está bloqueada.");
+
+        (bool Email, bool WhatsApp) channels =
+            requestedChannels ?? (buyer.NotificaEmail, buyer.NotificaWhatsApp);
+
+        if (!channels.Email && !channels.WhatsApp)
+            throw new AppConflictException("La cuenta no tiene un canal de entrega habilitado.");
+        if (channels.Email && string.IsNullOrWhiteSpace(buyer.Correo))
+            throw new AppConflictException("La cuenta no tiene un correo disponible para la entrega.");
+        if (channels.WhatsApp && string.IsNullOrWhiteSpace(buyer.Telefono))
+            throw new AppConflictException("La cuenta no tiene un teléfono disponible para WhatsApp.");
 
         var enrollment = await enrollmentStore.GetActiveAsync(buyerId, ct)
             ?? throw new AppConflictException(
@@ -67,11 +95,23 @@ public sealed class BuyerCredentialService(
             throw new AppDependencyException("No fue posible activar la nueva credencial QR.");
         }
 
-        await notificationSender.SendCredentialAsync(
-            buyer.Correo,
-            buyer.Nickname,
-            document,
-            ct);
+        if (channels.Email)
+        {
+            await notificationSender.SendCredentialAsync(
+                buyer.Correo,
+                buyer.Nickname,
+                document,
+                ct);
+        }
+
+        if (channels.WhatsApp)
+        {
+            await whatsAppNotifications.SendCredentialAsync(
+                buyer.Telefono!,
+                buyer.Nickname,
+                document,
+                ct);
+        }
 
         return document;
     }

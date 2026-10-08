@@ -17,40 +17,50 @@ public sealed class SmtpNotificationSender(
 {
     private readonly SmtpOptions _options = options.Value;
 
-    public Task SendRegistrationCredentialAsync(
+    public Task SendRegistrationWelcomeAsync(
         string email,
         string nickname,
-        string qrCredential,
         CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(qrCredential))
-            throw new ArgumentException("La credencial QR no puede estar vacía.", nameof(qrCredential));
-
+        var safeEmail = WebUtility.HtmlEncode(email);
         var safeNickname = WebUtility.HtmlEncode(nickname);
-        var safeCredential = WebUtility.HtmlEncode(qrCredential);
 
         var body = $$"""
             <!doctype html>
             <html lang="es">
-            <body style="font-family:Arial,sans-serif;color:#2D3035;line-height:1.5">
-              <h2 style="margin-bottom:8px">Bienvenido a NextTech Custom</h2>
-              <p>Hola <strong>{{safeNickname}}</strong>, tu registro se completó correctamente.</p>
-              <p>Esta es tu credencial QR de acceso. El frontend la utilizará para representar tu código QR.</p>
-              <div style="padding:14px;border:1px solid #d8d8d8;border-radius:8px;background:#f5f3ef;word-break:break-all;font-family:Consolas,monospace">
-                {{safeCredential}}
+            <body style="margin:0;padding:0;background:#f4f6f8;font-family:Arial,sans-serif;color:#25313c">
+              <div style="max-width:640px;margin:0 auto;padding:28px 16px">
+                <div style="background:#ffffff;border-radius:14px;padding:30px;box-shadow:0 4px 18px rgba(0,0,0,.08)">
+                  <div style="font-size:34px;margin-bottom:8px">🎉</div>
+                  <h2 style="margin:0 0 10px;color:#18232d">¡Bienvenido a NextTech Custom!</h2>
+                  <p style="margin:0 0 22px">Hola <strong>{{safeNickname}}</strong> 👋. Tu cuenta fue creada correctamente y ya puedes comenzar a utilizar nuestros servicios.</p>
+
+                  <div style="background:#f7f9fb;border:1px solid #e1e7ec;border-radius:10px;padding:18px;margin-bottom:22px">
+                    <h3 style="margin:0 0 12px;font-size:17px">👤 Datos de tu cuenta</h3>
+                    <p style="margin:6px 0"><strong>📧 Correo:</strong> {{safeEmail}}</p>
+                    <p style="margin:6px 0"><strong>🏷️ Usuario:</strong> {{safeNickname}}</p>
+                    <p style="margin:6px 0"><strong>🔐 Contraseña:</strong> configurada de forma segura</p>
+                  </div>
+
+                  <div style="border-left:4px solid #d89b2b;background:#fff8e8;padding:14px 16px;border-radius:6px">
+                    <strong>🛡️ Tu seguridad es importante</strong>
+                    <p style="margin:8px 0 0">NextTech Custom nunca envía tu contraseña ni credenciales QR privadas por correo. Si olvidas tu contraseña, utiliza la opción de recuperación de contraseña.</p>
+                  </div>
+
+                  <p style="margin:24px 0 0">✨ Gracias por formar parte de <strong>NextTech Custom</strong>.</p>
+                  <p style="margin:8px 0 0;color:#68737d">NextTech Solution</p>
+                </div>
               </div>
-              <p><strong>No compartas esta credencial.</strong> Permite iniciar sesión en tu cuenta mediante QR.</p>
-              <p>NextTech Solution</p>
             </body>
             </html>
             """;
 
         return SendAsync(
             email,
-            "NextTech Custom - Credencial de registro",
+            "Bienvenido a NextTech Custom",
             body,
             isBodyHtml: true,
-            notificationType: "registration-credential",
+            notificationType: "registration-welcome",
             attachment: null,
             ct);
     }
@@ -107,20 +117,43 @@ public sealed class SmtpNotificationSender(
         var body = $$"""
             <!doctype html>
             <html lang="es">
-            <body style="font-family:Arial,sans-serif;color:#2D3035;line-height:1.5">
-              <h2 style="margin-bottom:8px">Tu credencial NextTech Custom</h2>
-              <p>Hola <strong>{{safeNickname}}</strong>.</p>
-              <p>Adjuntamos tu credencial digital en formato PDF con tu fotografía y código QR de acceso.</p>
-              <p><strong>Importante:</strong> la emisión de esta credencial reemplaza cualquier QR anterior.</p>
-              <p>No compartas el PDF ni el código QR con terceros.</p>
-              <p>NextTech Solution</p>
+            <body style="margin:0;padding:0;background:#f4f6f8;font-family:Arial,sans-serif;color:#25313c">
+              <div style="max-width:640px;margin:0 auto;padding:28px 16px">
+                <div style="background:#ffffff;border-radius:14px;padding:30px;box-shadow:0 4px 18px rgba(0,0,0,.08)">
+                  <div style="font-size:34px;margin-bottom:8px">🪪</div>
+                  <h2 style="margin:0 0 10px;color:#18232d">Tu credencial digital está lista</h2>
+                  <p>Hola <strong>{{safeNickname}}</strong> 👋.</p>
+                  <p>Adjuntamos tu credencial digital de <strong>NextTech Custom</strong> en formato PDF. Consérvala en un lugar seguro para utilizarla cuando la necesites.</p>
+
+                  <div style="background:#f7f9fb;border:1px solid #e1e7ec;border-radius:10px;padding:18px;margin:20px 0">
+                    <strong>📎 Tu credencial incluye</strong>
+                    <ul style="padding-left:22px;margin-bottom:0">
+                      <li>Tu información de identificación.</li>
+                      <li>Tu fotografía registrada.</li>
+                      <li>Tu código QR personal de acceso.</li>
+                    </ul>
+                  </div>
+
+                  <div style="border-left:4px solid #c85050;background:#fff1f1;padding:14px 16px;border-radius:6px">
+                    <strong>⚠️ Importante</strong>
+                    <ul style="padding-left:22px;margin:8px 0 0">
+                      <li>Esta emisión reemplaza cualquier credencial QR anterior.</li>
+                      <li>No compartas el PDF, capturas ni el código QR con terceros.</li>
+                      <li>Si pierdes tu credencial, genera una nueva desde tu cuenta para invalidar la anterior.</li>
+                    </ul>
+                  </div>
+
+                  <p style="margin:24px 0 0">🔐 <strong>NextTech Custom — seguridad y tecnología a tu alcance.</strong></p>
+                  <p style="margin:8px 0 0;color:#68737d">NextTech Solution</p>
+                </div>
+              </div>
             </body>
             </html>
             """;
 
         return SendAsync(
             email,
-            "NextTech Custom - Credencial digital",
+            "NextTech Custom - Tu credencial digital está lista",
             body,
             isBodyHtml: true,
             notificationType: "buyer-pdf-credential",

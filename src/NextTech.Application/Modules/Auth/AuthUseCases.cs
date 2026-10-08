@@ -36,6 +36,7 @@ public sealed class BuyerAuthService(
     IFaceBiometricService faceBiometrics,
     IBuyerFaceEnrollmentStore enrollmentStore,
     IRegistrationNotificationSender registrationNotifications,
+    IWhatsAppNotificationSender whatsAppNotifications,
     IRecoveryNotificationSender recoveryNotifications)
 {
     public async Task<BuyerRegistrationResult> RegisterAsync(BuyerRegisterRequest request, CancellationToken ct)
@@ -51,6 +52,9 @@ public sealed class BuyerAuthService(
             throw new AppValidationException("El nickname es obligatorio y no puede exceder 50 caracteres.");
         if (!request.NotifyByEmail && !request.NotifyByWhatsApp)
             throw new AppValidationException("Debe habilitar al menos un canal de notificación.");
+        if (request.NotifyByWhatsApp && !IsSupportedWhatsAppPhone(phone))
+            throw new AppValidationException(
+                "Para notificaciones por WhatsApp use 8 dígitos de Guatemala o 502 seguido de 8 dígitos.");
 
         if (await gateway.FindByIdentifierAsync(email, ct) is not null)
             throw new AppConflictException("El correo, nickname o teléfono ya está registrado.");
@@ -78,11 +82,22 @@ public sealed class BuyerAuthService(
         var buyer = await gateway.FindByIdAsync(buyerId, ct)
             ?? throw new AppDependencyException("El comprador fue creado, pero no pudo recuperarse desde Oracle.");
 
-        await registrationNotifications.SendRegistrationCredentialAsync(
-            buyer.Correo,
-            buyer.Nickname,
-            qrCredential,
-            ct);
+        if (buyer.NotificaEmail)
+        {
+            await registrationNotifications.SendRegistrationWelcomeAsync(
+                buyer.Correo,
+                buyer.Nickname,
+                ct);
+        }
+
+        if (buyer.NotificaWhatsApp && !string.IsNullOrWhiteSpace(buyer.Telefono))
+        {
+            await whatsAppNotifications.SendRegistrationWelcomeAsync(
+                buyer.Telefono,
+                buyer.Correo,
+                buyer.Nickname,
+                ct);
+        }
 
         return new BuyerRegistrationResult(buyerId, qrCredential, tokens.CreateBuyerToken(ToProfile(buyer)));
     }
@@ -249,6 +264,13 @@ public sealed class BuyerAuthService(
     {
         if (!buyer.Activo) throw new AppForbiddenException("La cuenta está inactiva.");
         if (buyer.Bloqueado) throw new AppForbiddenException("La cuenta está bloqueada.");
+    }
+
+    private static bool IsSupportedWhatsAppPhone(string phone)
+    {
+        var digits = new string(phone.Where(char.IsDigit).ToArray());
+        return digits.Length == 8 ||
+               (digits.Length == 11 && digits.StartsWith("502", StringComparison.Ordinal));
     }
 
     private static string NormalizeEmail(string email)

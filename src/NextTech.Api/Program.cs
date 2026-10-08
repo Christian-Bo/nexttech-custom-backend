@@ -12,6 +12,7 @@ using NextTech.Application.Common.CurrentActor;
 using NextTech.Application.Modules.Auth;
 using NextTech.Application.Modules.Credentials;
 using NextTech.Application.Modules.Face;
+using NextTech.Application.Modules.Notifications;
 using NextTech.Application.Modules.Profile;
 using NextTech.Infrastructure;
 
@@ -31,6 +32,7 @@ builder.Services.AddScoped<InternalAuthService>();
 builder.Services.AddScoped<InternalUserAdministrationService>();
 builder.Services.AddScoped<InternalSecurityAuditService>();
 builder.Services.AddScoped<BuyerCredentialService>();
+builder.Services.AddScoped<BuyerNotificationService>();
 builder.Services.AddScoped<FaceApplicationService>();
 builder.Services.AddScoped<BuyerProfileService>();
 builder.Services.AddNextTechAuthorization();
