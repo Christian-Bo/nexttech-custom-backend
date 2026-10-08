@@ -6,6 +6,7 @@ using NextTech.Application.Credentials;
 using NextTech.Application.Face;
 using NextTech.Application.Interfaces;
 using NextTech.Application.Modules.Credentials;
+using NextTech.Application.Notifications;
 
 namespace NextTech.UnitTests;
 
@@ -18,7 +19,8 @@ public sealed class BuyerCredentialServiceTests
         var store = new StubEnrollmentStore(Enrollment());
         var generator = new StubPdfGenerator();
         var notifications = new StubNotificationSender();
-        var service = new BuyerCredentialService(gateway, store, generator, notifications);
+        var whatsApp = new StubWhatsAppNotificationSender();
+        var service = new BuyerCredentialService(gateway, store, generator, notifications, whatsApp);
 
         var result = await service.IssueAsync(21, CancellationToken.None);
 
@@ -36,6 +38,73 @@ public sealed class BuyerCredentialServiceTests
         Assert.Equal(expectedHash, gateway.LastQrHash);
         Assert.NotEqual(generator.Data.QrCredential, gateway.LastQrHash);
         Assert.Same(result, notifications.Document);
+        Assert.Null(whatsApp.Document);
+    }
+
+    [Fact]
+    public async Task Issue_SendsPdfByWhatsAppWhenPreferenceIsEnabled()
+    {
+        var gateway = new StubGateway(ActiveBuyer(
+            notifyByEmail: false,
+            notifyByWhatsApp: true,
+            phone: "50254375269"));
+        var store = new StubEnrollmentStore(Enrollment());
+        var generator = new StubPdfGenerator();
+        var notifications = new StubNotificationSender();
+        var whatsApp = new StubWhatsAppNotificationSender();
+        var service = new BuyerCredentialService(gateway, store, generator, notifications, whatsApp);
+
+        var result = await service.IssueAsync(21, CancellationToken.None);
+
+        Assert.Null(notifications.Document);
+        Assert.Same(result, whatsApp.Document);
+        Assert.Equal("50254375269", whatsApp.Phone);
+        Assert.Equal("buyer", whatsApp.Nickname);
+    }
+
+    [Fact]
+    public async Task Reissue_WithWhatsAppChannel_OverridesStoredEmailPreferenceAndRotatesQr()
+    {
+        var gateway = new StubGateway(ActiveBuyer(
+            notifyByEmail: true,
+            notifyByWhatsApp: false,
+            phone: "50254375269"));
+        var store = new StubEnrollmentStore(Enrollment());
+        var generator = new StubPdfGenerator();
+        var notifications = new StubNotificationSender();
+        var whatsApp = new StubWhatsAppNotificationSender();
+        var service = new BuyerCredentialService(gateway, store, generator, notifications, whatsApp);
+
+        var result = await service.ReissueAsync(
+            21,
+            new NotificationDeliveryRequest(NotificationDeliveryChannels.WhatsApp),
+            CancellationToken.None);
+
+        Assert.NotNull(gateway.LastQrHash);
+        Assert.Null(notifications.Document);
+        Assert.Same(result, whatsApp.Document);
+    }
+
+    [Fact]
+    public async Task Reissue_WithBothChannels_SendsSameDocumentThroughBothChannels()
+    {
+        var gateway = new StubGateway(ActiveBuyer(
+            notifyByEmail: false,
+            notifyByWhatsApp: false,
+            phone: "50254375269"));
+        var store = new StubEnrollmentStore(Enrollment());
+        var generator = new StubPdfGenerator();
+        var notifications = new StubNotificationSender();
+        var whatsApp = new StubWhatsAppNotificationSender();
+        var service = new BuyerCredentialService(gateway, store, generator, notifications, whatsApp);
+
+        var result = await service.ReissueAsync(
+            21,
+            new NotificationDeliveryRequest(NotificationDeliveryChannels.EmailAndWhatsApp),
+            CancellationToken.None);
+
+        Assert.Same(result, notifications.Document);
+        Assert.Same(result, whatsApp.Document);
     }
 
     [Fact]
@@ -45,7 +114,8 @@ public sealed class BuyerCredentialServiceTests
         var store = new StubEnrollmentStore(null);
         var generator = new StubPdfGenerator();
         var notifications = new StubNotificationSender();
-        var service = new BuyerCredentialService(gateway, store, generator, notifications);
+        var whatsApp = new StubWhatsAppNotificationSender();
+        var service = new BuyerCredentialService(gateway, store, generator, notifications, whatsApp);
 
         await Assert.ThrowsAsync<AppConflictException>(() =>
             service.IssueAsync(21, CancellationToken.None));
@@ -62,7 +132,8 @@ public sealed class BuyerCredentialServiceTests
         var store = new StubEnrollmentStore(Enrollment());
         var generator = new StubPdfGenerator(throwOnGenerate: true);
         var notifications = new StubNotificationSender();
-        var service = new BuyerCredentialService(gateway, store, generator, notifications);
+        var whatsApp = new StubWhatsAppNotificationSender();
+        var service = new BuyerCredentialService(gateway, store, generator, notifications, whatsApp);
 
         await Assert.ThrowsAsync<AppDependencyException>(() =>
             service.IssueAsync(21, CancellationToken.None));
@@ -71,15 +142,18 @@ public sealed class BuyerCredentialServiceTests
         Assert.Null(notifications.Document);
     }
 
-    private static BuyerAuthRecord ActiveBuyer() => new(
+    private static BuyerAuthRecord ActiveBuyer(
+        bool notifyByEmail = true,
+        bool notifyByWhatsApp = false,
+        string? phone = "50254375269") => new(
         21,
         "buyer@example.test",
-        null,
+        phone,
         null,
         "buyer",
         "hash",
-        true,
-        false,
+        notifyByEmail,
+        notifyByWhatsApp,
         true,
         false,
         0,
@@ -121,6 +195,32 @@ public sealed class BuyerCredentialServiceTests
             BuyerCredentialDocument document,
             CancellationToken ct)
         {
+            Document = document;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class StubWhatsAppNotificationSender : IWhatsAppNotificationSender
+    {
+        public string? Phone { get; private set; }
+        public string? Nickname { get; private set; }
+        public BuyerCredentialDocument? Document { get; private set; }
+
+        public Task SendRegistrationWelcomeAsync(
+            string phone,
+            string email,
+            string nickname,
+            CancellationToken ct)
+            => Task.CompletedTask;
+
+        public Task SendCredentialAsync(
+            string phone,
+            string nickname,
+            BuyerCredentialDocument document,
+            CancellationToken ct)
+        {
+            Phone = phone;
+            Nickname = nickname;
             Document = document;
             return Task.CompletedTask;
         }
