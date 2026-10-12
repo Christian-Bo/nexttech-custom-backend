@@ -22,7 +22,8 @@ public sealed class BuyerCredentialPdfGeneratorTests
             portrait,
             "image/png",
             "sample-qr-credential",
-            new DateTimeOffset(2026, 9, 21, 18, 30, 0, TimeSpan.Zero)));
+            new DateTimeOffset(2026, 9, 21, 18, 30, 0, TimeSpan.Zero),
+            new CredentialCustomization("NEXTTECH_BLUE", [])));
 
         Assert.Equal("application/pdf", document.ContentType);
         Assert.Equal("nexttech-credential-21.pdf", document.FileName);

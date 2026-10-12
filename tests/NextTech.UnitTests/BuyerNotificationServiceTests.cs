@@ -81,6 +81,59 @@ public sealed class BuyerNotificationServiceTests
             BuyerCredentialDocument document,
             CancellationToken ct)
             => Task.CompletedTask;
+
+        public Task SendPasswordRecoveryAsync(
+            string phone,
+            string nickname,
+            string rawToken,
+            DateTimeOffset expiresAt,
+            CancellationToken ct)
+            => Task.CompletedTask;
+
+        public Task SendPasswordChangedAsync(
+            string phone,
+            string nickname,
+            CancellationToken ct)
+            => Task.CompletedTask;
+
+        public Task<bool> SendPurchaseConfirmationAsync(
+            string phone,
+            string nickname,
+            string orderCode,
+            decimal total,
+            string paymentStatus,
+            byte[] receiptPdf,
+            CancellationToken ct)
+            => Task.FromResult(false);
+
+        public Task<bool> SendOrderReadyAsync(
+            string phone,
+            string nickname,
+            string orderCode,
+            CancellationToken ct)
+            => Task.FromResult(false);
+
+        public Task<bool> SendOrderOutForDeliveryAsync(
+            string phone,
+            string nickname,
+            string orderCode,
+            CancellationToken ct)
+            => Task.FromResult(false);
+
+        public Task<bool> SendDeliveryConfirmedAsync(
+            string phone,
+            string nickname,
+            string orderCode,
+            CancellationToken ct)
+            => Task.FromResult(false);
+
+        public Task<bool> SendDeliveryIssueAsync(
+            string phone,
+            string nickname,
+            string orderCode,
+            string reason,
+            CancellationToken ct)
+            => Task.FromResult(false);
     }
 
     private sealed class StubGateway(BuyerAuthRecord buyer) : ICentralIdentityGateway

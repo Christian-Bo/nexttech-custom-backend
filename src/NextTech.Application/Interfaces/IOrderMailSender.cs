@@ -15,9 +15,22 @@ public interface IOrderMailSender
         string codigoOrden,
         CancellationToken cancellationToken);
 
+    Task<bool> SendOrderOutForDeliveryAsync(
+        string email,
+        string nickname,
+        string codigoOrden,
+        CancellationToken cancellationToken);
+
     Task<bool> SendDeliveryConfirmedAsync(
         string email,
         string nickname,
         string codigoOrden,
+        CancellationToken cancellationToken);
+
+    Task<bool> SendDeliveryIssueAsync(
+        string email,
+        string nickname,
+        string codigoOrden,
+        string reason,
         CancellationToken cancellationToken);
 }

@@ -19,6 +19,9 @@ public sealed class BuyerCredentialPdfGenerator : IBuyerCredentialPdfGenerator
         if (string.IsNullOrWhiteSpace(data.QrCredential))
             throw new AppValidationException("La credencial QR no puede estar vacía.");
 
+        var customization = data.Customization ?? BuyerCredentialDesignCatalog.Default;
+        var theme = ResolveTheme(customization.TemplateId);
+
         try
         {
             var qrImage = CreateQrPng(data.QrCredential);
@@ -29,72 +32,103 @@ public sealed class BuyerCredentialPdfGenerator : IBuyerCredentialPdfGenerator
                     page.Size(PageSizes.A4);
                     page.Margin(36);
                     page.PageColor(Colors.White);
-                    page.DefaultTextStyle(style => style.FontSize(11).FontColor(Colors.Grey.Darken3));
+                    page.DefaultTextStyle(style => style.FontSize(11).FontColor(theme.BodyText));
 
                     page.Content()
                         .AlignCenter()
                         .AlignMiddle()
-                        .Width(390)
+                        .Width(410)
                         .Border(1)
-                        .BorderColor(Colors.Grey.Lighten2)
-                        .Background(Colors.Grey.Lighten5)
+                        .BorderColor(theme.Border)
+                        .Background(theme.Background)
                         .Padding(24)
                         .Column(column =>
                         {
-                            column.Spacing(14);
+                            column.Spacing(12);
+
+                            if (data.IsPreview)
+                            {
+                                column.Item()
+                                    .AlignCenter()
+                                    .Text("VISTA PREVIA · QR NO ACTIVO")
+                                    .SemiBold()
+                                    .FontSize(10)
+                                    .FontColor(Colors.Red.Darken1);
+                            }
+
+                            column.Item().Row(row =>
+                            {
+                                row.RelativeItem().Text(StickerText(customization, "TOP_LEFT"))
+                                    .SemiBold().FontSize(9).FontColor(theme.Accent);
+                                row.RelativeItem().AlignRight().Text(StickerText(customization, "TOP_RIGHT"))
+                                    .SemiBold().FontSize(9).FontColor(theme.Accent);
+                            });
 
                             column.Item()
                                 .AlignCenter()
                                 .Text("NEXTTECH CUSTOM")
                                 .SemiBold()
                                 .FontSize(22)
-                                .FontColor(Colors.Blue.Darken2);
+                                .FontColor(theme.Primary);
 
                             column.Item()
                                 .AlignCenter()
                                 .Text("Credencial digital de comprador")
                                 .FontSize(12)
-                                .FontColor(Colors.Grey.Darken1);
+                                .FontColor(theme.SecondaryText);
 
                             column.Item()
                                 .AlignCenter()
-                                .Width(170)
-                                .Height(170)
-                                .Border(1)
-                                .BorderColor(Colors.Grey.Lighten2)
+                                .Width(176)
+                                .Height(176)
+                                .Border(2)
+                                .BorderColor(theme.Accent)
                                 .Background(Colors.White)
-                                .Padding(4)
+                                .Padding(5)
                                 .Image(data.PortraitContent)
                                 .FitArea();
 
                             column.Item().AlignCenter().Text(data.Nickname)
                                 .SemiBold()
-                                .FontSize(18);
+                                .FontSize(18)
+                                .FontColor(theme.BodyText);
 
                             column.Item().AlignCenter().Text(data.Role)
                                 .SemiBold()
                                 .FontSize(11)
-                                .FontColor(Colors.Blue.Darken1);
+                                .FontColor(theme.Primary);
 
                             column.Item()
                                 .AlignCenter()
-                                .Width(190)
-                                .Height(190)
+                                .Width(188)
+                                .Height(188)
                                 .Background(Colors.White)
+                                .Border(1)
+                                .BorderColor(theme.Border)
                                 .Padding(6)
                                 .Image(qrImage)
                                 .FitArea();
 
                             column.Item()
                                 .AlignCenter()
-                                .Text("Escanea este código para iniciar sesión. No compartas esta credencial.")
+                                .Text(data.IsPreview
+                                    ? "Este QR pertenece únicamente a la vista previa y no permite iniciar sesión."
+                                    : "Escanea este código para iniciar sesión. No compartas esta credencial.")
                                 .FontSize(9)
-                                .FontColor(Colors.Grey.Darken1);
+                                .FontColor(theme.SecondaryText);
+
+                            column.Item().Row(row =>
+                            {
+                                row.RelativeItem().Text(StickerText(customization, "BOTTOM_LEFT"))
+                                    .SemiBold().FontSize(9).FontColor(theme.Accent);
+                                row.RelativeItem().AlignRight().Text(StickerText(customization, "BOTTOM_RIGHT"))
+                                    .SemiBold().FontSize(9).FontColor(theme.Accent);
+                            });
 
                             column.Item()
-                                .PaddingTop(4)
+                                .PaddingTop(3)
                                 .BorderTop(1)
-                                .BorderColor(Colors.Grey.Lighten2)
+                                .BorderColor(theme.Border)
                                 .PaddingTop(10)
                                 .Row(row =>
                                 {
@@ -107,10 +141,11 @@ public sealed class BuyerCredentialPdfGenerator : IBuyerCredentialPdfGenerator
                 });
             }).GeneratePdf();
 
+            var filePrefix = data.IsPreview ? "nexttech-credential-preview" : "nexttech-credential";
             return new BuyerCredentialDocument(
                 pdf,
                 "application/pdf",
-                $"nexttech-credential-{data.BuyerId}.pdf",
+                $"{filePrefix}-{data.BuyerId}.pdf",
                 data.IssuedAtUtc);
         }
         catch (AppException)
@@ -123,6 +158,47 @@ public sealed class BuyerCredentialPdfGenerator : IBuyerCredentialPdfGenerator
         }
     }
 
+    private static CredentialTheme ResolveTheme(string? templateId)
+        => templateId?.Trim().ToUpperInvariant() switch
+        {
+            "NEXTTECH_DARK" => new CredentialTheme(
+                Colors.Grey.Darken4,
+                Colors.Cyan.Lighten1,
+                Colors.Cyan.Darken1,
+                Colors.White,
+                Colors.Grey.Lighten2,
+                Colors.Grey.Darken1),
+            "NEXTTECH_PURPLE" => new CredentialTheme(
+                Colors.Purple.Lighten5,
+                Colors.Purple.Darken2,
+                Colors.Purple.Medium,
+                Colors.Grey.Darken4,
+                Colors.Grey.Darken1,
+                Colors.Purple.Lighten2),
+            _ => new CredentialTheme(
+                Colors.Blue.Lighten5,
+                Colors.Blue.Darken2,
+                Colors.Blue.Medium,
+                Colors.Grey.Darken4,
+                Colors.Grey.Darken1,
+                Colors.Blue.Lighten3)
+        };
+
+    private static string StickerText(CredentialCustomization customization, string slot)
+    {
+        var sticker = customization.Stickers.FirstOrDefault(
+            x => string.Equals(x.Slot, slot, StringComparison.Ordinal));
+
+        return sticker?.StickerId switch
+        {
+            "TECH" => "[ TECH ]",
+            "GAMER" => "[ GAMER ]",
+            "CODE" => "[ CODE ]",
+            "STAR" => "[ STAR ]",
+            _ => " "
+        };
+    }
+
     private static byte[] CreateQrPng(string qrCredential)
     {
         using var qrData = QRCodeGenerator.GenerateQrCode(
@@ -131,4 +207,12 @@ public sealed class BuyerCredentialPdfGenerator : IBuyerCredentialPdfGenerator
         using var qr = new PngByteQRCode(qrData);
         return qr.GetGraphic(12);
     }
+
+    private sealed record CredentialTheme(
+        string Background,
+        string Primary,
+        string Accent,
+        string BodyText,
+        string SecondaryText,
+        string Border);
 }

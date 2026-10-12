@@ -103,6 +103,35 @@ public sealed class SmtpNotificationSender(
             ct);
     }
 
+    public Task SendPasswordChangedAsync(
+        string email,
+        string nickname,
+        CancellationToken ct)
+    {
+        var safeNickname = WebUtility.HtmlEncode(nickname);
+        var body = $$"""
+            <!doctype html>
+            <html lang="es">
+            <body style="font-family:Arial,sans-serif;color:#2D3035;line-height:1.5">
+              <h2 style="margin-bottom:8px">🔐 Tu contraseña fue actualizada</h2>
+              <p>Hola <strong>{{safeNickname}}</strong>.</p>
+              <p>La contraseña de tu cuenta NextTech Custom fue modificada correctamente.</p>
+              <p><strong>⚠️ Si tú no realizaste este cambio, comunícate inmediatamente con soporte y protege tu cuenta.</strong></p>
+              <p>NextTech Solution</p>
+            </body>
+            </html>
+            """;
+
+        return SendAsync(
+            email,
+            "NextTech Custom - Contraseña actualizada",
+            body,
+            isBodyHtml: true,
+            notificationType: "password-changed",
+            attachment: null,
+            ct);
+    }
+
     public Task SendCredentialAsync(
         string email,
         string nickname,
@@ -223,6 +252,71 @@ public sealed class SmtpNotificationSender(
             body,
             isBodyHtml: true,
             notificationType: "order-ready",
+            attachment: null,
+            cancellationToken);
+    }
+
+    public Task<bool> SendOrderOutForDeliveryAsync(
+        string email,
+        string nickname,
+        string codigoOrden,
+        CancellationToken cancellationToken)
+    {
+        var safeNickname = WebUtility.HtmlEncode(nickname);
+        var safeCodigo = WebUtility.HtmlEncode(codigoOrden);
+        var body = $$"""
+            <!doctype html>
+            <html lang="es">
+            <body style="font-family:Arial,sans-serif;color:#2D3035;line-height:1.5">
+              <h2 style="margin-bottom:8px">🚚 Tu pedido está en camino</h2>
+              <p>Hola <strong>{{safeNickname}}</strong>.</p>
+              <p>Tu orden <strong>{{safeCodigo}}</strong> ya fue tomada por un repartidor y se encuentra en ruta de entrega.</p>
+              <p>Mantente pendiente del teléfono registrado. Por seguridad, nunca compartas tu contraseña ni credenciales privadas.</p>
+              <p>NextTech Solution</p>
+            </body>
+            </html>
+            """;
+
+        return SendAsync(
+            email,
+            $"NextTech Custom - Pedido en camino {codigoOrden}",
+            body,
+            isBodyHtml: true,
+            notificationType: "order-out-for-delivery",
+            attachment: null,
+            cancellationToken);
+    }
+
+    public Task<bool> SendDeliveryIssueAsync(
+        string email,
+        string nickname,
+        string codigoOrden,
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        var safeNickname = WebUtility.HtmlEncode(nickname);
+        var safeCodigo = WebUtility.HtmlEncode(codigoOrden);
+        var safeReason = WebUtility.HtmlEncode(reason);
+        var body = $$"""
+            <!doctype html>
+            <html lang="es">
+            <body style="font-family:Arial,sans-serif;color:#2D3035;line-height:1.5">
+              <h2 style="margin-bottom:8px">⚠️ No pudimos completar la entrega</h2>
+              <p>Hola <strong>{{safeNickname}}</strong>.</p>
+              <p>La entrega de tu orden <strong>{{safeCodigo}}</strong> no pudo completarse en este intento.</p>
+              <p><strong>Motivo:</strong> {{safeReason}}</p>
+              <p>El pedido quedará disponible para coordinar un nuevo intento.</p>
+              <p>NextTech Solution</p>
+            </body>
+            </html>
+            """;
+
+        return SendAsync(
+            email,
+            $"NextTech Custom - Incidencia de entrega {codigoOrden}",
+            body,
+            isBodyHtml: true,
+            notificationType: "delivery-issue",
             attachment: null,
             cancellationToken);
     }

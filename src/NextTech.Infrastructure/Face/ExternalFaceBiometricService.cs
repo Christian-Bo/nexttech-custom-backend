@@ -26,6 +26,8 @@ public sealed class ExternalFaceBiometricService(
 
     private readonly FaceApiOptions _options = options.Value;
 
+    public bool IdentificationEnabled => _options.IdentificationEnabled;
+
     public async Task<FaceChallengeResult> CreateLivenessChallengeAsync(CancellationToken ct)
     {
         using var response = await client.PostAsync(_options.LivenessPath, content: null, ct);
@@ -160,6 +162,79 @@ public sealed class ExternalFaceBiometricService(
             similarity,
             threshold,
             decisionMargin,
+            OptionalString(root, "mensaje"));
+    }
+
+    public async Task RegisterIdentityAsync(
+        long buyerId,
+        FaceImage referenceImage,
+        CancellationToken ct)
+    {
+        if (!_options.IdentificationEnabled)
+            return;
+
+        FaceImageValidator.Validate(referenceImage);
+
+        using var form = new MultipartFormDataContent();
+        form.Add(new StringContent(buyerId.ToString(CultureInfo.InvariantCulture)), "subjectId");
+        AddImage(form, ImageField, referenceImage);
+
+        using var response = await client.PostAsync(_options.IdentityEnrollPath, form, ct);
+        await EnsureSuccessAsync(response, "registro en la galería de identificación facial", ct);
+    }
+
+    public async Task<FaceIdentificationResult> IdentifyLiveAsync(
+        string challengeId,
+        FaceImage neutralImage,
+        FaceImage challengeImage,
+        CancellationToken ct)
+    {
+        if (!_options.IdentificationEnabled)
+            throw new AppConflictException("La identificación facial directa todavía no está habilitada.");
+        if (string.IsNullOrWhiteSpace(challengeId) || challengeId.Length > 200)
+            throw new AppValidationException("El challengeId es obligatorio y debe ser válido.");
+
+        FaceImageValidator.Validate(neutralImage);
+        FaceImageValidator.Validate(challengeImage);
+
+        using var form = new MultipartFormDataContent();
+        form.Add(new StringContent(challengeId.Trim()), ChallengeIdField);
+        AddImage(form, NeutralImageField, neutralImage);
+        AddImage(form, ChallengeImageField, challengeImage);
+
+        using var response = await client.PostAsync(_options.IdentifyPath, form, ct);
+        await EnsureSuccessAsync(response, "identificación facial directa con liveness", ct);
+
+        using var json = await ReadJsonAsync(response, "identificación facial directa con liveness", ct);
+        var root = json.RootElement;
+        var identified = RequiredBoolean(root, "identified", "identificación facial directa con liveness");
+        var authenticationPassed = RequiredBoolean(root, "authenticationPassed", "identificación facial directa con liveness");
+        var liveness = RequiredObject(root, "liveness", "identificación facial directa con liveness");
+
+        long? buyerId = null;
+        var subjectId = OptionalString(root, "subjectId");
+        if (!string.IsNullOrWhiteSpace(subjectId) &&
+            long.TryParse(subjectId, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedId))
+        {
+            buyerId = parsedId;
+        }
+
+        decimal? similarity = null;
+        decimal? threshold = null;
+        if (TryGetProperty(root, "identification", out var identification) &&
+            identification.ValueKind == JsonValueKind.Object)
+        {
+            similarity = OptionalDecimal(identification, "similarity");
+            threshold = OptionalDecimal(identification, "threshold");
+        }
+
+        return new FaceIdentificationResult(
+            identified,
+            buyerId,
+            authenticationPassed,
+            RequiredBoolean(liveness, "isLive", "identificación facial directa con liveness"),
+            similarity,
+            threshold,
             OptionalString(root, "mensaje"));
     }
 

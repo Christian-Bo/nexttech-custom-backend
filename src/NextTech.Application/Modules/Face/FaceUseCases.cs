@@ -52,6 +52,11 @@ public sealed class FaceApplicationService(
                 now),
             ct);
 
+        // Identification is an additive capability. When disabled, the existing
+        // identifier-based facial login keeps working exactly as before.
+        if (biometrics.IdentificationEnabled)
+            await biometrics.RegisterIdentityAsync(buyer.IdUsuario, neutralImage, ct);
+
         return new FaceEnrollmentResult(
             true,
             enrollment.BiometricTemplate.Version,

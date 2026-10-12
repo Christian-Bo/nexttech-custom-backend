@@ -56,6 +56,7 @@ public static class DependencyInjection
         services.AddScoped<IInternalUserAdministrationRepository, InternalUserAdministrationRepository>();
         services.AddScoped<IInternalSecurityAuditRepository, InternalSecurityAuditRepository>();
         services.AddScoped<IBuyerFaceEnrollmentStore, OracleBuyerBiometricStore>();
+        services.AddScoped<IBuyerCredentialCustomizationStore, OracleBuyerCredentialCustomizationStore>();
         services.AddScoped<IBuyerProfileRepository, OracleBuyerProfileRepository>();
         services.AddSingleton<IPasswordService, PasswordService>();
         services.AddSingleton<ITokenService, JwtTokenService>();
@@ -132,7 +133,9 @@ public static class DependencyInjection
                 IsRelativeApiPath(options.EnrollPath) &&
                 IsRelativeApiPath(options.SegmentPath) &&
                 IsRelativeApiPath(options.LivenessPath) &&
-                IsRelativeApiPath(options.VerifyPath),
+                IsRelativeApiPath(options.VerifyPath) &&
+                (!options.IdentificationEnabled ||
+                 (IsRelativeApiPath(options.IdentityEnrollPath) && IsRelativeApiPath(options.IdentifyPath))),
                 "Las rutas de FaceApi deben comenzar con '/'.")
             .Validate(static options =>
                 !string.IsNullOrWhiteSpace(options.ApiKey) &&

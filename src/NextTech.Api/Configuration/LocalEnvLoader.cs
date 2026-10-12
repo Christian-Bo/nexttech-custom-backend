@@ -132,6 +132,9 @@ internal static class LocalEnvLoader
         Map("FACE_API_SEGMENT_PATH", "FaceApi__SegmentPath");
         Map("FACE_API_LIVENESS_PATH", "FaceApi__LivenessPath");
         Map("FACE_API_VERIFY_PATH", "FaceApi__VerifyPath");
+        Map("FACE_API_IDENTIFICATION_ENABLED", "FaceApi__IdentificationEnabled");
+        Map("FACE_API_IDENTITY_ENROLL_PATH", "FaceApi__IdentityEnrollPath");
+        Map("FACE_API_IDENTIFY_PATH", "FaceApi__IdentifyPath");
         Map("FACE_API_KEY", "FaceApi__ApiKey");
         Map("FACE_API_KEY_HEADER", "FaceApi__ApiKeyHeader");
         Map("FACE_API_TIMEOUT_SECONDS", "FaceApi__TimeoutSeconds");
