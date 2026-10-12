@@ -166,6 +166,86 @@ public sealed class OracleBuyerBiometricStore(OracleDbContext db) : IBuyerFaceEn
         }
     }
 
+    public async Task UpdateCredentialPortraitAsync(
+        long buyerId,
+        FaceImage personalizedImage,
+        CancellationToken ct)
+    {
+        FaceImageValidator.Validate(personalizedImage);
+
+        var connection = GetConnection();
+        await EnsureOpenAsync(connection, ct);
+        await using var transaction = (OracleTransaction)await connection.BeginTransactionAsync(
+            IsolationLevel.ReadCommitted,
+            ct);
+
+        try
+        {
+            var currentPhotos = await GetCurrentPhotoIdsAsync(connection, transaction, buyerId, ct);
+            if (currentPhotos.OriginalPhotoId is null)
+                throw new AppConflictException("Debe completar el enrolamiento facial antes de personalizar la credencial.");
+
+            var modifiedPhotoId = await InsertPhotoAsync(
+                connection,
+                transaction,
+                buyerId,
+                "FOTO_USUARIO_MODIFICADA",
+                personalizedImage.Content,
+                personalizedImage.ContentType,
+                CreateFileName(buyerId, "credential", personalizedImage.ContentType),
+                ct);
+
+            await UpdateUserModifiedPhotoAsync(
+                connection,
+                transaction,
+                buyerId,
+                modifiedPhotoId,
+                ct);
+
+            if (currentPhotos.ModifiedPhotoId is not null &&
+                currentPhotos.ModifiedPhotoId != currentPhotos.OriginalPhotoId)
+            {
+                await DeactivatePhotoAsync(
+                    connection,
+                    transaction,
+                    buyerId,
+                    currentPhotos.ModifiedPhotoId.Value,
+                    ct);
+            }
+
+            await transaction.CommitAsync(ct);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(ct);
+            throw;
+        }
+    }
+
+    private static async Task UpdateUserModifiedPhotoAsync(
+        OracleConnection connection,
+        OracleTransaction transaction,
+        long buyerId,
+        long modifiedPhotoId,
+        CancellationToken ct)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.BindByName = true;
+        command.CommandText = """
+            UPDATE TIENDA_APP.USUARIO
+               SET ID_FOTO_MODIFICADA = :id_foto_modificada,
+                   FECHA_MODIFICACION = SYSTIMESTAMP
+             WHERE ID_USUARIO = :id_usuario
+            """;
+        Add(command, "id_foto_modificada", OracleDbType.Int64, modifiedPhotoId);
+        Add(command, "id_usuario", OracleDbType.Int64, buyerId);
+
+        var affected = await command.ExecuteNonQueryAsync(ct);
+        if (affected != 1)
+            throw new AppNotFoundException("Comprador no encontrado.");
+    }
+
     private OracleConnection GetConnection()
         => (OracleConnection)db.Database.GetDbConnection();
 

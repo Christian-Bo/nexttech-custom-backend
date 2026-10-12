@@ -68,6 +68,16 @@ public sealed record FaceVerificationResult(
     decimal? DecisionMargin,
     string? Message = null);
 
+
+public sealed record FaceIdentificationResult(
+    bool Identified,
+    long? BuyerId,
+    bool AuthenticationPassed,
+    bool IsLive,
+    decimal? Similarity,
+    decimal? Threshold,
+    string? Message = null);
+
 public sealed record FaceSegmentationResult(
     byte[] Content,
     string ContentType,

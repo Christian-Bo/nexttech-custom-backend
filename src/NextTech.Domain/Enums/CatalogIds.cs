@@ -58,7 +58,10 @@ public enum TipoNotificacionId
 {
     ConfirmacionCompra = 1,
     PedidoListo = 2,
-    EntregaConfirmada = 3
+    EntregaConfirmada = 3,
+    PedidoEnEntrega = 4,
+    EntregaNoCompletada = 5,
+    PagoRechazado = 6
 }
 
 public enum CanalNotificacionId

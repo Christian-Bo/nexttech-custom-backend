@@ -96,6 +96,8 @@ public sealed class FaceApplicationServiceTests
 
     private sealed class StubBiometrics(bool authenticated) : IFaceBiometricService
     {
+        public bool IdentificationEnabled => false;
+
         public List<FaceImage> TemplateSourceImages { get; } = [];
         public string? LastVerificationTemplate { get; private set; }
 
@@ -141,6 +143,19 @@ public sealed class FaceApplicationServiceTests
                 null));
         }
 
+        public Task RegisterIdentityAsync(
+            long buyerId,
+            FaceImage referenceImage,
+            CancellationToken ct)
+            => Task.CompletedTask;
+
+        public Task<FaceIdentificationResult> IdentifyLiveAsync(
+            string challengeId,
+            FaceImage neutralImage,
+            FaceImage challengeImage,
+            CancellationToken ct)
+            => throw new NotSupportedException();
+
         public Task<FaceSegmentationResult> SegmentForCardAsync(FaceImage image, CancellationToken ct)
             => Task.FromResult(new FaceSegmentationResult([1], "image/png", "portrait.png"));
     }
@@ -159,6 +174,12 @@ public sealed class FaceApplicationServiceTests
             Stored = enrollment;
             return Task.FromResult(enrollment);
         }
+
+        public Task UpdateCredentialPortraitAsync(
+            long buyerId,
+            FaceImage personalizedImage,
+            CancellationToken ct)
+            => Task.CompletedTask;
     }
 
     private sealed class StubGateway(BuyerAuthRecord buyer) : ICentralIdentityGateway

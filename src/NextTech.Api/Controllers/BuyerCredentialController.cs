@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using NextTech.Application.Common.CurrentActor;
+using NextTech.Application.Credentials;
 using NextTech.Application.Modules.Credentials;
 using NextTech.Application.Notifications;
 
@@ -15,6 +16,74 @@ public sealed class BuyerCredentialController(
     BuyerCredentialService credentials,
     ICurrentActor actor) : ControllerBase
 {
+    [HttpGet("customization-context")]
+    [ProducesResponseType(typeof(CredentialCustomizationContext), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<CredentialCustomizationContext>> GetCustomizationContext(
+        CancellationToken ct)
+        => Ok(await credentials.GetCustomizationContextAsync(
+            actor.RequireIdCompradorExterno(),
+            ct));
+
+    [HttpPut("customization")]
+    [ProducesResponseType(typeof(CredentialCustomization), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<CredentialCustomization>> SaveCustomization(
+        [FromBody] CredentialCustomizationRequest request,
+        CancellationToken ct)
+        => Ok(await credentials.SaveCustomizationAsync(
+            actor.RequireIdCompradorExterno(),
+            request,
+            ct));
+
+    [HttpPost("preview")]
+    [Produces("application/pdf")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status503ServiceUnavailable)]
+    public async Task<IActionResult> Preview(
+        [FromBody] CredentialCustomizationRequest request,
+        CancellationToken ct)
+    {
+        var document = await credentials.PreviewAsync(
+            actor.RequireIdCompradorExterno(),
+            request,
+            ct);
+
+        SetNoStoreHeaders();
+        return File(document.Content, document.ContentType, document.FileName);
+    }
+
+    [HttpPost("confirm")]
+    [Produces("application/pdf")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status503ServiceUnavailable)]
+    public async Task<IActionResult> Confirm(
+        [FromBody] CredentialCustomizationRequest request,
+        CancellationToken ct)
+    {
+        var document = await credentials.ConfirmCustomizationAndIssueAsync(
+            actor.RequireIdCompradorExterno(),
+            request,
+            ct);
+
+        SetNoStoreHeaders();
+        return File(document.Content, document.ContentType, document.FileName);
+    }
+
     [HttpPost("issue")]
     [Produces("application/pdf")]
     [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]

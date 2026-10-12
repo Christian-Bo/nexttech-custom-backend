@@ -20,7 +20,7 @@ public sealed class BuyerCredentialServiceTests
         var generator = new StubPdfGenerator();
         var notifications = new StubNotificationSender();
         var whatsApp = new StubWhatsAppNotificationSender();
-        var service = new BuyerCredentialService(gateway, store, generator, notifications, whatsApp);
+        var service = new BuyerCredentialService(gateway, store, new StubCustomizationStore(), generator, notifications, whatsApp);
 
         var result = await service.IssueAsync(21, CancellationToken.None);
 
@@ -52,7 +52,7 @@ public sealed class BuyerCredentialServiceTests
         var generator = new StubPdfGenerator();
         var notifications = new StubNotificationSender();
         var whatsApp = new StubWhatsAppNotificationSender();
-        var service = new BuyerCredentialService(gateway, store, generator, notifications, whatsApp);
+        var service = new BuyerCredentialService(gateway, store, new StubCustomizationStore(), generator, notifications, whatsApp);
 
         var result = await service.IssueAsync(21, CancellationToken.None);
 
@@ -73,7 +73,7 @@ public sealed class BuyerCredentialServiceTests
         var generator = new StubPdfGenerator();
         var notifications = new StubNotificationSender();
         var whatsApp = new StubWhatsAppNotificationSender();
-        var service = new BuyerCredentialService(gateway, store, generator, notifications, whatsApp);
+        var service = new BuyerCredentialService(gateway, store, new StubCustomizationStore(), generator, notifications, whatsApp);
 
         var result = await service.ReissueAsync(
             21,
@@ -96,7 +96,7 @@ public sealed class BuyerCredentialServiceTests
         var generator = new StubPdfGenerator();
         var notifications = new StubNotificationSender();
         var whatsApp = new StubWhatsAppNotificationSender();
-        var service = new BuyerCredentialService(gateway, store, generator, notifications, whatsApp);
+        var service = new BuyerCredentialService(gateway, store, new StubCustomizationStore(), generator, notifications, whatsApp);
 
         var result = await service.ReissueAsync(
             21,
@@ -115,7 +115,7 @@ public sealed class BuyerCredentialServiceTests
         var generator = new StubPdfGenerator();
         var notifications = new StubNotificationSender();
         var whatsApp = new StubWhatsAppNotificationSender();
-        var service = new BuyerCredentialService(gateway, store, generator, notifications, whatsApp);
+        var service = new BuyerCredentialService(gateway, store, new StubCustomizationStore(), generator, notifications, whatsApp);
 
         await Assert.ThrowsAsync<AppConflictException>(() =>
             service.IssueAsync(21, CancellationToken.None));
@@ -133,7 +133,7 @@ public sealed class BuyerCredentialServiceTests
         var generator = new StubPdfGenerator(throwOnGenerate: true);
         var notifications = new StubNotificationSender();
         var whatsApp = new StubWhatsAppNotificationSender();
-        var service = new BuyerCredentialService(gateway, store, generator, notifications, whatsApp);
+        var service = new BuyerCredentialService(gateway, store, new StubCustomizationStore(), generator, notifications, whatsApp);
 
         await Assert.ThrowsAsync<AppDependencyException>(() =>
             service.IssueAsync(21, CancellationToken.None));
@@ -224,6 +224,59 @@ public sealed class BuyerCredentialServiceTests
             Document = document;
             return Task.CompletedTask;
         }
+
+        public Task SendPasswordRecoveryAsync(
+            string phone,
+            string nickname,
+            string rawToken,
+            DateTimeOffset expiresAt,
+            CancellationToken ct)
+            => Task.CompletedTask;
+
+        public Task SendPasswordChangedAsync(
+            string phone,
+            string nickname,
+            CancellationToken ct)
+            => Task.CompletedTask;
+
+        public Task<bool> SendPurchaseConfirmationAsync(
+            string phone,
+            string nickname,
+            string orderCode,
+            decimal total,
+            string paymentStatus,
+            byte[] receiptPdf,
+            CancellationToken ct)
+            => Task.FromResult(false);
+
+        public Task<bool> SendOrderReadyAsync(
+            string phone,
+            string nickname,
+            string orderCode,
+            CancellationToken ct)
+            => Task.FromResult(false);
+
+        public Task<bool> SendOrderOutForDeliveryAsync(
+            string phone,
+            string nickname,
+            string orderCode,
+            CancellationToken ct)
+            => Task.FromResult(false);
+
+        public Task<bool> SendDeliveryConfirmedAsync(
+            string phone,
+            string nickname,
+            string orderCode,
+            CancellationToken ct)
+            => Task.FromResult(false);
+
+        public Task<bool> SendDeliveryIssueAsync(
+            string phone,
+            string nickname,
+            string orderCode,
+            string reason,
+            CancellationToken ct)
+            => Task.FromResult(false);
     }
 
     private sealed class StubEnrollmentStore(BuyerFaceEnrollment? enrollment) : IBuyerFaceEnrollmentStore
@@ -235,6 +288,29 @@ public sealed class BuyerCredentialServiceTests
             BuyerFaceEnrollment value,
             CancellationToken ct)
             => throw new NotSupportedException();
+
+        public Task UpdateCredentialPortraitAsync(
+            long buyerId,
+            FaceImage personalizedImage,
+            CancellationToken ct)
+            => Task.CompletedTask;
+    }
+
+    private sealed class StubCustomizationStore : IBuyerCredentialCustomizationStore
+    {
+        public CredentialCustomization? Stored { get; private set; }
+
+        public Task<CredentialCustomization?> GetAsync(long buyerId, CancellationToken ct)
+            => Task.FromResult(Stored);
+
+        public Task UpsertAsync(
+            long buyerId,
+            CredentialCustomization customization,
+            CancellationToken ct)
+        {
+            Stored = customization;
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class StubGateway(BuyerAuthRecord buyer) : ICentralIdentityGateway

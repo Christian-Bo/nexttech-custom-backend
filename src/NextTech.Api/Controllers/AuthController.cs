@@ -72,6 +72,29 @@ public sealed class AuthController(
         => auth.CreateFaceLoginChallengeAsync(ct);
 
     [EnableRateLimiting("biometric")]
+    [HttpPost("face-identify-login")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(12 * 1024 * 1024)]
+    [ProducesResponseType(typeof(NextTech.Application.Authentication.AccessTokenResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<NextTech.Application.Authentication.AccessTokenResult> FaceIdentifyLogin(
+        [FromForm] FaceIdentifyLoginFormRequest request,
+        CancellationToken ct)
+    {
+        var neutral = await FaceRequestMapper.ReadImageAsync(request.NeutralImage, "neutralImage", ct);
+        var challenge = await FaceRequestMapper.ReadImageAsync(request.ChallengeImage, "challengeImage", ct);
+
+        return await auth.LoginByFaceIdentificationAsync(
+            request.ChallengeId,
+            neutral,
+            challenge,
+            ct);
+    }
+
+    [EnableRateLimiting("biometric")]
     [HttpPost("face-login")]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(12 * 1024 * 1024)]
@@ -100,6 +123,13 @@ public sealed class AuthController(
 public sealed class FaceLoginFormRequest
 {
     public string Identifier { get; init; } = string.Empty;
+    public string ChallengeId { get; init; } = string.Empty;
+    public IFormFile? NeutralImage { get; init; }
+    public IFormFile? ChallengeImage { get; init; }
+}
+
+public sealed class FaceIdentifyLoginFormRequest
+{
     public string ChallengeId { get; init; } = string.Empty;
     public IFormFile? NeutralImage { get; init; }
     public IFormFile? ChallengeImage { get; init; }
