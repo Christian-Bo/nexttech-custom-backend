@@ -216,6 +216,59 @@ public sealed class BuyerAuthServiceNotificationTests
             BuyerCredentialDocument document,
             CancellationToken ct)
             => Task.CompletedTask;
+
+        public Task SendPasswordRecoveryAsync(
+            string phone,
+            string nickname,
+            string rawToken,
+            DateTimeOffset expiresAt,
+            CancellationToken ct)
+            => Task.CompletedTask;
+
+        public Task SendPasswordChangedAsync(
+            string phone,
+            string nickname,
+            CancellationToken ct)
+            => Task.CompletedTask;
+
+        public Task<bool> SendPurchaseConfirmationAsync(
+            string phone,
+            string nickname,
+            string orderCode,
+            decimal total,
+            string paymentStatus,
+            byte[] receiptPdf,
+            CancellationToken ct)
+            => Task.FromResult(false);
+
+        public Task<bool> SendOrderReadyAsync(
+            string phone,
+            string nickname,
+            string orderCode,
+            CancellationToken ct)
+            => Task.FromResult(false);
+
+        public Task<bool> SendOrderOutForDeliveryAsync(
+            string phone,
+            string nickname,
+            string orderCode,
+            CancellationToken ct)
+            => Task.FromResult(false);
+
+        public Task<bool> SendDeliveryConfirmedAsync(
+            string phone,
+            string nickname,
+            string orderCode,
+            CancellationToken ct)
+            => Task.FromResult(false);
+
+        public Task<bool> SendDeliveryIssueAsync(
+            string phone,
+            string nickname,
+            string orderCode,
+            string reason,
+            CancellationToken ct)
+            => Task.FromResult(false);
     }
 
     private sealed class StubRecoveryNotificationSender : IRecoveryNotificationSender
@@ -226,10 +279,18 @@ public sealed class BuyerAuthServiceNotificationTests
             DateTimeOffset expiresAt,
             CancellationToken ct)
             => Task.CompletedTask;
+
+        public Task SendPasswordChangedAsync(
+            string email,
+            string nickname,
+            CancellationToken ct)
+            => Task.CompletedTask;
     }
 
     private sealed class UnusedFaceBiometricService : IFaceBiometricService
     {
+        public bool IdentificationEnabled => false;
+
         public Task<FaceChallengeResult> CreateLivenessChallengeAsync(CancellationToken ct)
             => throw new NotSupportedException();
 
@@ -238,6 +299,19 @@ public sealed class BuyerAuthServiceNotificationTests
 
         public Task<FaceVerificationResult> VerifyTemplateLiveAsync(
             string biometricTemplate,
+            string challengeId,
+            FaceImage neutralImage,
+            FaceImage challengeImage,
+            CancellationToken ct)
+            => throw new NotSupportedException();
+
+        public Task RegisterIdentityAsync(
+            long buyerId,
+            FaceImage referenceImage,
+            CancellationToken ct)
+            => Task.CompletedTask;
+
+        public Task<FaceIdentificationResult> IdentifyLiveAsync(
             string challengeId,
             FaceImage neutralImage,
             FaceImage challengeImage,
@@ -255,5 +329,11 @@ public sealed class BuyerAuthServiceNotificationTests
 
         public Task<BuyerFaceEnrollment> UpsertAsync(BuyerFaceEnrollment enrollment, CancellationToken ct)
             => throw new NotSupportedException();
+
+        public Task UpdateCredentialPortraitAsync(
+            long buyerId,
+            FaceImage personalizedImage,
+            CancellationToken ct)
+            => Task.CompletedTask;
     }
 }

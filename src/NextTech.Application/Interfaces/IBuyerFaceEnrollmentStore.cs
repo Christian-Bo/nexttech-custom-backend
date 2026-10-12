@@ -9,4 +9,9 @@ public interface IBuyerFaceEnrollmentStore
     Task<BuyerFaceEnrollment> UpsertAsync(
         BuyerFaceEnrollment enrollment,
         CancellationToken ct);
+
+    Task UpdateCredentialPortraitAsync(
+        long buyerId,
+        FaceImage personalizedImage,
+        CancellationToken ct);
 }

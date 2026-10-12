@@ -68,4 +68,9 @@ public interface IRecoveryNotificationSender
         string rawToken,
         DateTimeOffset expiresAt,
         CancellationToken ct);
+
+    Task SendPasswordChangedAsync(
+        string email,
+        string nickname,
+        CancellationToken ct);
 }

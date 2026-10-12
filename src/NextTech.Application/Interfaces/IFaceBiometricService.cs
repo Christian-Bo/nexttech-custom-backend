@@ -4,6 +4,8 @@ namespace NextTech.Application.Interfaces;
 
 public interface IFaceBiometricService
 {
+    bool IdentificationEnabled { get; }
+
     Task<FaceChallengeResult> CreateLivenessChallengeAsync(CancellationToken ct);
 
     Task<ProtectedFaceEnrollmentResult> CreateTemplateAsync(
@@ -12,6 +14,17 @@ public interface IFaceBiometricService
 
     Task<FaceVerificationResult> VerifyTemplateLiveAsync(
         string biometricTemplate,
+        string challengeId,
+        FaceImage neutralImage,
+        FaceImage challengeImage,
+        CancellationToken ct);
+
+    Task RegisterIdentityAsync(
+        long buyerId,
+        FaceImage referenceImage,
+        CancellationToken ct);
+
+    Task<FaceIdentificationResult> IdentifyLiveAsync(
         string challengeId,
         FaceImage neutralImage,
         FaceImage challengeImage,

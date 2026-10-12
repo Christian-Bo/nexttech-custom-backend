@@ -69,6 +69,60 @@ public sealed class WhatsAppNotificationSenderTests
     }
 
     [Fact]
+    public async Task PurchaseConfirmation_UsesMediaEndpointWithReceiptAndOrderSummary()
+    {
+        var handler = new RecordingHandler(HttpStatusCode.OK);
+        using var client = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://api-whatsapp.example/")
+        };
+        var sender = CreateSender(client, enabled: true);
+
+        var sent = await sender.SendPurchaseConfirmationAsync(
+            "50254375269",
+            "buyer",
+            "NT-TEST-001",
+            1249.00m,
+            "Pagado",
+            [1, 2, 3, 4],
+            CancellationToken.None);
+
+        Assert.True(sent);
+        Assert.Equal("/messages/media", handler.RequestUri?.AbsolutePath);
+
+        using var json = JsonDocument.Parse(handler.Body!);
+        Assert.Equal("constancia-NT-TEST-001.pdf", json.RootElement.GetProperty("filename").GetString());
+        var caption = json.RootElement.GetProperty("caption").GetString();
+        Assert.Contains("Compra confirmada", caption);
+        Assert.Contains("NT-TEST-001", caption);
+        Assert.Contains("Pagado", caption);
+    }
+
+    [Fact]
+    public async Task PasswordRecovery_UsesConfiguredResetUrlWithoutExposingTokenSeparately()
+    {
+        var handler = new RecordingHandler(HttpStatusCode.OK);
+        using var client = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://api-whatsapp.example/")
+        };
+        var sender = CreateSender(client, enabled: true);
+
+        await sender.SendPasswordRecoveryAsync(
+            "50254375269",
+            "buyer",
+            "token-test",
+            DateTimeOffset.UtcNow.AddMinutes(30),
+            CancellationToken.None);
+
+        Assert.Equal("/messages/text", handler.RequestUri?.AbsolutePath);
+        using var json = JsonDocument.Parse(handler.Body!);
+        var message = json.RootElement.GetProperty("message").GetString();
+        Assert.Contains("https://app.example/reset-password?token=token-test", message);
+        Assert.Contains("Recuperación de acceso", message);
+    }
+
+    [Fact]
     public async Task DisabledIntegration_DoesNotCallProvider()
     {
         var handler = new RecordingHandler(HttpStatusCode.OK);
@@ -97,6 +151,10 @@ public sealed class WhatsAppNotificationSenderTests
                 ApiKey = "test-key",
                 ApiKeyHeader = "X-API-Key",
                 TimeoutSeconds = 30
+            }),
+            Options.Create(new NextTech.Infrastructure.Email.SmtpOptions
+            {
+                RecoveryUrlBase = "https://app.example/reset-password"
             }),
             NullLogger<WhatsAppNotificationSender>.Instance);
 

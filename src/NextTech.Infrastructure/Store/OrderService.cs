@@ -19,6 +19,7 @@ public sealed class OrderService(
     NextTechDbContext db,
     IPurchaseReceiptPdfGenerator receiptPdf,
     IOrderMailSender mail,
+    IWhatsAppNotificationSender whatsApp,
     IRecurrenteCheckoutClient recurrente,
     ICompradorCentralReader compradores) : IOrderService
 {
@@ -194,6 +195,19 @@ public sealed class OrderService(
                     correoAplicado,
                     nicknameAplicado,
                     orden.CodigoOrden,
+                    receipt.Content,
+                    ct),
+                cancellationToken);
+
+            await IntentarEnviarWhatsAppAsync(
+                orden.IdOrden,
+                TipoNotificacionId.ConfirmacionCompra,
+                ct => whatsApp.SendPurchaseConfirmationAsync(
+                    orden.TelefonoCompradorAplicado ?? string.Empty,
+                    nicknameAplicado,
+                    orden.CodigoOrden,
+                    orden.Total,
+                    "Pendiente de pago contra entrega",
                     receipt.Content,
                     ct),
                 cancellationToken);
@@ -502,11 +516,15 @@ public sealed class OrderService(
             ahora,
             "Pedido listo para entrega"));
 
+        var preferencias = await ObtenerPreferenciasNotificacionOrdenAsync(
+            orden.IdOrden,
+            cancellationToken);
+
         EncolarNotificaciones(
             orden.IdOrden,
             TipoNotificacionId.PedidoListo,
-            notificaEmail: true,
-            notificaWhatsApp: !string.IsNullOrWhiteSpace(orden.TelefonoCompradorAplicado),
+            preferencias.Email,
+            preferencias.WhatsApp,
             orden.CorreoCompradorAplicado,
             orden.TelefonoCompradorAplicado,
             ahora);
@@ -533,6 +551,16 @@ public sealed class OrderService(
                 orden.CodigoOrden,
                 ct),
             cancellationToken);
+
+        await IntentarEnviarWhatsAppAsync(
+            orden.IdOrden,
+            TipoNotificacionId.PedidoListo,
+            ct => whatsApp.SendOrderReadyAsync(
+                orden.TelefonoCompradorAplicado ?? string.Empty,
+                orden.NicknameCompradorAplicado,
+                orden.CodigoOrden,
+                ct),
+            cancellationToken);
     }
 
     public async Task TomarOrdenAsync(
@@ -547,6 +575,9 @@ public sealed class OrderService(
         }
 
         var ahora = DateTime.Now;
+        var preferencias = await ObtenerPreferenciasNotificacionOrdenAsync(
+            orden.IdOrden,
+            cancellationToken);
 
         await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
         try
@@ -583,6 +614,15 @@ public sealed class OrderService(
                 ahora,
                 "Orden tomada por repartidor"));
 
+            EncolarNotificaciones(
+                orden.IdOrden,
+                TipoNotificacionId.PedidoEnEntrega,
+                preferencias.Email,
+                preferencias.WhatsApp,
+                orden.CorreoCompradorAplicado,
+                orden.TelefonoCompradorAplicado,
+                ahora);
+
             db.BitacoraAuditoria.Add(CrearBitacora(
                 TipoActorId.UsuarioInterno,
                 idRepartidor,
@@ -602,6 +642,26 @@ public sealed class OrderService(
             await tx.RollbackAsync(cancellationToken);
             throw;
         }
+
+        await IntentarEnviarCorreoAsync(
+            orden.IdOrden,
+            TipoNotificacionId.PedidoEnEntrega,
+            ct => mail.SendOrderOutForDeliveryAsync(
+                orden.CorreoCompradorAplicado,
+                orden.NicknameCompradorAplicado,
+                orden.CodigoOrden,
+                ct),
+            cancellationToken);
+
+        await IntentarEnviarWhatsAppAsync(
+            orden.IdOrden,
+            TipoNotificacionId.PedidoEnEntrega,
+            ct => whatsApp.SendOrderOutForDeliveryAsync(
+                orden.TelefonoCompradorAplicado ?? string.Empty,
+                orden.NicknameCompradorAplicado,
+                orden.CodigoOrden,
+                ct),
+            cancellationToken);
     }
 
     public async Task ConfirmarEntregaAsync(
@@ -658,11 +718,15 @@ public sealed class OrderService(
             ahora,
             "Entrega confirmada"));
 
+        var preferencias = await ObtenerPreferenciasNotificacionOrdenAsync(
+            orden.IdOrden,
+            cancellationToken);
+
         EncolarNotificaciones(
             orden.IdOrden,
             TipoNotificacionId.EntregaConfirmada,
-            notificaEmail: true,
-            notificaWhatsApp: !string.IsNullOrWhiteSpace(orden.TelefonoCompradorAplicado),
+            preferencias.Email,
+            preferencias.WhatsApp,
             orden.CorreoCompradorAplicado,
             orden.TelefonoCompradorAplicado,
             ahora);
@@ -689,6 +753,16 @@ public sealed class OrderService(
                 orden.CodigoOrden,
                 ct),
             cancellationToken);
+
+        await IntentarEnviarWhatsAppAsync(
+            orden.IdOrden,
+            TipoNotificacionId.EntregaConfirmada,
+            ct => whatsApp.SendDeliveryConfirmedAsync(
+                orden.TelefonoCompradorAplicado ?? string.Empty,
+                orden.NicknameCompradorAplicado,
+                orden.CodigoOrden,
+                ct),
+            cancellationToken);
     }
 
     public async Task RegistrarNoEncontradoAsync(
@@ -705,6 +779,9 @@ public sealed class OrderService(
         var orden = await ObtenerOrdenDeRepartidorAsync(idRepartidor, codigoOrden, cancellationToken);
         var intento = await ObtenerIntentoAbiertoAsync(orden.IdOrden, idRepartidor, cancellationToken);
         var ahora = DateTime.Now;
+        var preferencias = await ObtenerPreferenciasNotificacionOrdenAsync(
+            orden.IdOrden,
+            cancellationToken);
 
         intento.FechaHoraFin = ahora;
         intento.IdResultadoEntrega = (int)ResultadoEntregaId.CompradorNoEncontrado;
@@ -733,6 +810,16 @@ public sealed class OrderService(
             ahora,
             "Orden liberada para reintento de entrega"));
 
+        await PrepararNotificacionesReintentablesAsync(
+            orden.IdOrden,
+            TipoNotificacionId.EntregaNoCompletada,
+            preferencias.Email,
+            preferencias.WhatsApp,
+            orden.CorreoCompradorAplicado,
+            orden.TelefonoCompradorAplicado,
+            ahora,
+            cancellationToken);
+
         db.BitacoraAuditoria.Add(CrearBitacora(
             TipoActorId.UsuarioInterno,
             idRepartidor,
@@ -745,6 +832,30 @@ public sealed class OrderService(
             orden.CodigoOrden));
 
         await db.SaveChangesAsync(cancellationToken);
+
+        const string mensajeUsuario = "No fue posible localizarte en este intento de entrega. Tu pedido quedó disponible para un nuevo intento.";
+
+        await IntentarEnviarCorreoAsync(
+            orden.IdOrden,
+            TipoNotificacionId.EntregaNoCompletada,
+            ct => mail.SendDeliveryIssueAsync(
+                orden.CorreoCompradorAplicado,
+                orden.NicknameCompradorAplicado,
+                orden.CodigoOrden,
+                mensajeUsuario,
+                ct),
+            cancellationToken);
+
+        await IntentarEnviarWhatsAppAsync(
+            orden.IdOrden,
+            TipoNotificacionId.EntregaNoCompletada,
+            ct => whatsApp.SendDeliveryIssueAsync(
+                orden.TelefonoCompradorAplicado ?? string.Empty,
+                orden.NicknameCompradorAplicado,
+                orden.CodigoOrden,
+                mensajeUsuario,
+                ct),
+            cancellationToken);
     }
 
     public async Task RegistrarPagoNoRealizadoAsync(
@@ -762,6 +873,9 @@ public sealed class OrderService(
         var intento = await ObtenerIntentoAbiertoAsync(orden.IdOrden, idRepartidor, cancellationToken);
         var ahora = DateTime.Now;
         var motivo = observacion.Trim();
+        var preferencias = await ObtenerPreferenciasNotificacionOrdenAsync(
+            orden.IdOrden,
+            cancellationToken);
 
         intento.FechaHoraFin = ahora;
         intento.IdResultadoEntrega = (int)ResultadoEntregaId.PagoNoRealizado;
@@ -780,6 +894,16 @@ public sealed class OrderService(
             ahora,
             $"Pago no realizado: {motivo}"));
 
+        await PrepararNotificacionesReintentablesAsync(
+            orden.IdOrden,
+            TipoNotificacionId.PagoRechazado,
+            preferencias.Email,
+            preferencias.WhatsApp,
+            orden.CorreoCompradorAplicado,
+            orden.TelefonoCompradorAplicado,
+            ahora,
+            cancellationToken);
+
         db.BitacoraAuditoria.Add(CrearBitacora(
             TipoActorId.UsuarioInterno,
             idRepartidor,
@@ -792,6 +916,30 @@ public sealed class OrderService(
             orden.CodigoOrden));
 
         await db.SaveChangesAsync(cancellationToken);
+
+        const string mensajeUsuario = "No fue posible completar el pago en este intento de entrega. Tu pedido quedó disponible para un nuevo intento.";
+
+        await IntentarEnviarCorreoAsync(
+            orden.IdOrden,
+            TipoNotificacionId.PagoRechazado,
+            ct => mail.SendDeliveryIssueAsync(
+                orden.CorreoCompradorAplicado,
+                orden.NicknameCompradorAplicado,
+                orden.CodigoOrden,
+                mensajeUsuario,
+                ct),
+            cancellationToken);
+
+        await IntentarEnviarWhatsAppAsync(
+            orden.IdOrden,
+            TipoNotificacionId.PagoRechazado,
+            ct => whatsApp.SendDeliveryIssueAsync(
+                orden.TelefonoCompradorAplicado ?? string.Empty,
+                orden.NicknameCompradorAplicado,
+                orden.CodigoOrden,
+                mensajeUsuario,
+                ct),
+            cancellationToken);
     }
 
     public async Task<ArchivoDescargaDto> ObtenerConstanciaAsync(
@@ -1492,6 +1640,19 @@ public sealed class OrderService(
                     ct),
                 cancellationToken);
 
+            await IntentarEnviarWhatsAppAsync(
+                orden.IdOrden,
+                TipoNotificacionId.ConfirmacionCompra,
+                ct => whatsApp.SendPurchaseConfirmationAsync(
+                    orden.TelefonoCompradorAplicado ?? string.Empty,
+                    nicknameAplicado,
+                    orden.CodigoOrden,
+                    orden.Total,
+                    "Pagado",
+                    receipt.Content,
+                    ct),
+                cancellationToken);
+
             return await ObtenerSeguimientoAsync(
                 idCompradorExterno,
                 orden.CodigoOrden,
@@ -1584,6 +1745,119 @@ public sealed class OrderService(
         }
 
         return new ArchivoDescargaDto(archivo.Datos, archivo.TipoMime, archivo.NombreOriginal);
+    }
+
+    private async Task PrepararNotificacionesReintentablesAsync(
+        int idOrden,
+        TipoNotificacionId tipo,
+        bool notificaEmail,
+        bool notificaWhatsApp,
+        string correo,
+        string? telefono,
+        DateTime ahora,
+        CancellationToken cancellationToken)
+    {
+        async Task PrepararCanalAsync(CanalNotificacionId canal, string destino)
+        {
+            var existente = await db.Notificacion.FirstOrDefaultAsync(
+                n => n.IdOrden == idOrden
+                     && n.IdTipoNotificacion == (int)tipo
+                     && n.IdCanalNotificacion == (int)canal,
+                cancellationToken);
+
+            if (existente is null)
+            {
+                db.Notificacion.Add(new Notificacion
+                {
+                    IdOrden = idOrden,
+                    IdTipoNotificacion = (int)tipo,
+                    IdCanalNotificacion = (int)canal,
+                    IdEstadoNotificacion = (int)EstadoNotificacionId.Pendiente,
+                    Destino = Truncar(destino, 200),
+                    FechaCreacion = ahora
+                });
+                return;
+            }
+
+            existente.IdEstadoNotificacion = (int)EstadoNotificacionId.Pendiente;
+            existente.Destino = Truncar(destino, 200);
+            existente.FechaEnvio = null;
+            existente.MensajeError = null;
+        }
+
+        if (notificaEmail && !string.IsNullOrWhiteSpace(correo))
+        {
+            await PrepararCanalAsync(CanalNotificacionId.Correo, correo);
+        }
+
+        if (notificaWhatsApp && !string.IsNullOrWhiteSpace(telefono))
+        {
+            await PrepararCanalAsync(CanalNotificacionId.WhatsApp, telefono);
+        }
+    }
+
+    private async Task<(bool Email, bool WhatsApp)> ObtenerPreferenciasNotificacionOrdenAsync(
+        int idOrden,
+        CancellationToken cancellationToken)
+    {
+        var canales = await db.Notificacion.AsNoTracking()
+            .Where(n => n.IdOrden == idOrden
+                        && n.IdTipoNotificacion == (int)TipoNotificacionId.ConfirmacionCompra)
+            .Select(n => n.IdCanalNotificacion)
+            .ToListAsync(cancellationToken);
+
+        return (
+            canales.Contains((int)CanalNotificacionId.Correo),
+            canales.Contains((int)CanalNotificacionId.WhatsApp));
+    }
+
+    private async Task IntentarEnviarWhatsAppAsync(
+        int idOrden,
+        TipoNotificacionId tipo,
+        Func<CancellationToken, Task<bool>> enviar,
+        CancellationToken cancellationToken)
+    {
+        var notificacion = await db.Notificacion
+            .FirstOrDefaultAsync(
+                n => n.IdOrden == idOrden
+                     && n.IdTipoNotificacion == (int)tipo
+                     && n.IdCanalNotificacion == (int)CanalNotificacionId.WhatsApp
+                     && n.IdEstadoNotificacion == (int)EstadoNotificacionId.Pendiente,
+                cancellationToken);
+
+        if (notificacion is null)
+        {
+            return;
+        }
+
+        notificacion.Intentos += 1;
+        var enviado = false;
+        try
+        {
+            enviado = await enviar(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            enviado = false;
+        }
+
+        if (enviado)
+        {
+            notificacion.IdEstadoNotificacion = (int)EstadoNotificacionId.Enviada;
+            notificacion.FechaEnvio = DateTime.Now;
+            notificacion.MensajeError = null;
+        }
+        else
+        {
+            notificacion.IdEstadoNotificacion = (int)EstadoNotificacionId.Fallida;
+            notificacion.MensajeError = "El mensaje de WhatsApp no pudo enviarse.";
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     private async Task IntentarEnviarCorreoAsync(

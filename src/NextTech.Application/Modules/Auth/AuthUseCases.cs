@@ -4,6 +4,7 @@ using NextTech.Application.Authentication;
 using NextTech.Application.Common;
 using NextTech.Application.Face;
 using NextTech.Application.Interfaces;
+using NextTech.Application.Notifications;
 
 namespace NextTech.Application.Modules.Auth;
 
@@ -23,7 +24,7 @@ public sealed record BuyerRegistrationResult(
 
 public sealed record LoginRequest(string Identifier, string Password);
 public sealed record QrLoginRequest(string QrCredential);
-public sealed record RecoveryRequest(string Email);
+public sealed record RecoveryRequest(string Email, string? Channel = null);
 public sealed record ResetPasswordRequest(string Token, string NewPassword);
 public sealed record RecoveryTokenResult(string Token, DateTimeOffset ExpiresAt);
 public sealed record InternalLoginRequest(string Email, string Password);
@@ -170,15 +171,40 @@ public sealed class BuyerAuthService(
 
     public async Task<RecoveryTokenResult?> StartRecoveryAsync(RecoveryRequest request, CancellationToken ct)
     {
+        (bool Email, bool WhatsApp)? requestedChannels = null;
+        if (!string.IsNullOrWhiteSpace(request.Channel))
+            requestedChannels = NotificationDeliveryChannels.Parse(request.Channel);
+
         var email = NormalizeEmail(request.Email);
         var buyer = await gateway.FindByIdentifierAsync(email, ct);
         if (buyer is null || !buyer.Activo)
             return null; // respuesta pública debe ser siempre neutra
 
+        // En un flujo anónimo solo se envía por canales que el comprador ya tenía habilitados.
+        // Esto evita que un tercero use forgot-password para forzar mensajes a un canal no consentido.
+        var channels = requestedChannels is null
+            ? (buyer.NotificaEmail, buyer.NotificaWhatsApp)
+            : (
+                requestedChannels.Value.Email && buyer.NotificaEmail,
+                requestedChannels.Value.WhatsApp && buyer.NotificaWhatsApp);
+
         var raw = CreateOpaqueToken();
         var expires = DateTimeOffset.UtcNow.AddMinutes(30);
         await gateway.CreateRecoveryTokenAsync(buyer.IdUsuario, HashToken(raw), expires, ct);
-        await recoveryNotifications.SendPasswordRecoveryAsync(buyer.Correo, raw, expires, ct);
+
+        if (channels.Item1)
+            await recoveryNotifications.SendPasswordRecoveryAsync(buyer.Correo, raw, expires, ct);
+
+        if (channels.Item2 && !string.IsNullOrWhiteSpace(buyer.Telefono))
+        {
+            await whatsAppNotifications.SendPasswordRecoveryAsync(
+                buyer.Telefono,
+                buyer.Nickname,
+                raw,
+                expires,
+                ct);
+        }
+
         return new RecoveryTokenResult(raw, expires);
     }
 
@@ -194,6 +220,16 @@ public sealed class BuyerAuthService(
 
         await gateway.SetPasswordHashAsync(userId, passwords.Hash(request.NewPassword), unlock: true, ct);
         await gateway.ConsumeRecoveryTokenAsync(tokenHash, ct);
+
+        var buyer = await gateway.FindByIdAsync(userId, ct);
+        if (buyer is null)
+            return;
+
+        if (buyer.NotificaEmail)
+            await recoveryNotifications.SendPasswordChangedAsync(buyer.Correo, buyer.Nickname, ct);
+
+        if (buyer.NotificaWhatsApp && !string.IsNullOrWhiteSpace(buyer.Telefono))
+            await whatsAppNotifications.SendPasswordChangedAsync(buyer.Telefono, buyer.Nickname, ct);
     }
 
     public Task<FaceChallengeResult> CreateFaceLoginChallengeAsync(CancellationToken ct)
@@ -253,6 +289,44 @@ public sealed class BuyerAuthService(
         }
 
         await gateway.RegisterSuccessfulLoginAsync(buyer.IdUsuario, normalizedIdentifier, "FACIAL", ct);
+        return tokens.CreateBuyerToken(ToProfile(buyer));
+    }
+
+    public async Task<AccessTokenResult> LoginByFaceIdentificationAsync(
+        string challengeId,
+        FaceImage neutralImage,
+        FaceImage challengeImage,
+        CancellationToken ct)
+    {
+        if (!faceBiometrics.IdentificationEnabled)
+            throw new AppConflictException("La identificación facial directa todavía no está habilitada en la Face API.");
+        if (string.IsNullOrWhiteSpace(challengeId) || challengeId.Length > 200)
+            throw new AppValidationException("El challengeId es obligatorio y debe ser válido.");
+
+        FaceImageValidator.Validate(neutralImage);
+        FaceImageValidator.Validate(challengeImage);
+
+        var result = await faceBiometrics.IdentifyLiveAsync(
+            challengeId.Trim(),
+            neutralImage,
+            challengeImage,
+            ct);
+
+        if (!result.AuthenticationPassed || !result.IsLive || !result.Identified || result.BuyerId is null)
+        {
+            await gateway.RegisterFailedLoginAsync(null, "face-identification", "FACIAL", "Rostro no identificado", ct);
+            throw new AppUnauthorizedException("No fue posible identificar el rostro.");
+        }
+
+        var buyer = await gateway.FindByIdAsync(result.BuyerId.Value, ct);
+        if (buyer is null)
+        {
+            await gateway.RegisterFailedLoginAsync(null, "face-identification", "FACIAL", "Sujeto biométrico sin comprador", ct);
+            throw new AppUnauthorizedException("No fue posible identificar el rostro.");
+        }
+
+        EnsureBuyerCanLogin(buyer);
+        await gateway.RegisterSuccessfulLoginAsync(buyer.IdUsuario, "face-identification", "FACIAL", ct);
         return tokens.CreateBuyerToken(ToProfile(buyer));
     }
 
