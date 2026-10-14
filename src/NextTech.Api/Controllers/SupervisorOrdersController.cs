@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using NextTech.Application.Authentication;
 using NextTech.Application.Common.CurrentActor;
+using NextTech.Application.Modules.Nfc;
 using NextTech.Application.Modules.Orders;
 
 namespace NextTech.Api.Controllers;
@@ -41,7 +42,8 @@ public sealed class SupervisorOrdersController(
     public async Task<IActionResult> DetalleProduccion(string codigo, CancellationToken cancellationToken)
     {
         _ = actor.RequireIdUsuarioInterno();
-        return Ok(await orders.ObtenerParaProduccionAsync(codigo, cancellationToken));
+        var produccion = await orders.ObtenerParaProduccionAsync(codigo, cancellationToken);
+        return Ok(NfcWriteUrlMapper.Apply(produccion, Request.Scheme, Request.Host.Value));
     }
 
     [HttpGet("{codigo}/files/{idArchivo:int}")]

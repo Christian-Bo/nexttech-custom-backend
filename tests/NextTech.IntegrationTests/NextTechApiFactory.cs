@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using NextTech.Application.Authentication;
 using NextTech.Application.Interfaces;
+using NextTech.Application.Modules.Orders;
 
 namespace NextTech.IntegrationTests;
 
@@ -43,11 +44,13 @@ public sealed class NextTechApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<ICentralIdentityGateway>();
             services.RemoveAll<IInternalAuthRepository>();
             services.RemoveAll<IInternalUserAdministrationRepository>();
+            services.RemoveAll<IOrderService>();
 
             services.AddSingleton(SecurityState);
             services.AddSingleton<ICentralIdentityGateway>(SecurityState);
             services.AddSingleton<IInternalAuthRepository>(SecurityState);
             services.AddSingleton<IInternalUserAdministrationRepository>(SecurityState);
+            services.AddSingleton<IOrderService, IntegrationOrderServiceStub>();
         });
     }
 

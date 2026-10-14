@@ -34,7 +34,7 @@ public sealed class WhatsAppNotificationSenderTests
         Assert.Contains("Bienvenido", message);
         Assert.Contains("buyer@example.test", message);
         Assert.Contains("buyer", message);
-        Assert.Contains("nunca envía tu contraseña", message);
+        Assert.Contains("nunca enviará tu contraseña", message);
     }
 
     [Fact]
