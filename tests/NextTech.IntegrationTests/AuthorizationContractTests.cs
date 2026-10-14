@@ -26,8 +26,7 @@ public sealed class AuthorizationContractTests : IClassFixture<NextTechApiFactor
 
         var response = await client.GetAsync("/n/ORD-NO-EXISTE");
 
-        Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
-        Assert.NotEqual(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]
