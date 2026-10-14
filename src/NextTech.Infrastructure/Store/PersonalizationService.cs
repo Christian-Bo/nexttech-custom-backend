@@ -61,6 +61,8 @@ public sealed class PersonalizationService(NextTechDbContext db) : IPersonalizat
             throw new BusinessRuleException("Hay una zona que no pertenece al producto de la variante.");
         }
 
+        var nfcUrl = NfcUrlValidator.Normalizar(request.NfcUrl);
+
         var ahora = DateTime.Now;
         await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
 
@@ -79,6 +81,7 @@ public sealed class PersonalizationService(NextTechDbContext db) : IPersonalizat
             foreach (var zona in request.Zonas)
             {
                 PersonalizationJsonValidator.Validar(zona.ConfiguracionJson);
+                var configuracionJson = NfcUrlJson.Inyectar(zona.ConfiguracionJson, nfcUrl);
 
                 var imagen = ImagePayloadParser.Parse(
                     zona.ImagenBase64,
@@ -105,7 +108,7 @@ public sealed class PersonalizationService(NextTechDbContext db) : IPersonalizat
                     IdPersonalizacion = personalizacion.IdPersonalizacion,
                     IdZona = zona.IdZona,
                     IdArchivoImagenFinal = archivo.IdArchivo,
-                    ConfiguracionJson = zona.ConfiguracionJson,
+                    ConfiguracionJson = configuracionJson,
                     FechaCreacion = ahora
                 });
             }
@@ -118,11 +121,7 @@ public sealed class PersonalizationService(NextTechDbContext db) : IPersonalizat
                 .Select(z => new ZonaPersonalizacionDto(z.IdZona, z.IdArchivoImagenFinal, z.ConfiguracionJson))
                 .ToListAsync(cancellationToken);
 
-            return new PersonalizacionDto(
-                personalizacion.IdPersonalizacion,
-                personalizacion.IdVariante,
-                personalizacion.Bloqueada,
-                zonasGuardadas);
+            return ToDto(personalizacion.IdPersonalizacion, personalizacion.IdVariante, personalizacion.Bloqueada, zonasGuardadas);
         }
         catch
         {
@@ -148,10 +147,22 @@ public sealed class PersonalizationService(NextTechDbContext db) : IPersonalizat
             .Select(z => new ZonaPersonalizacionDto(z.IdZona, z.IdArchivoImagenFinal, z.ConfiguracionJson))
             .ToListAsync(cancellationToken);
 
-        return new PersonalizacionDto(
+        return ToDto(
             personalizacion.IdPersonalizacion,
             personalizacion.IdVariante,
             personalizacion.Bloqueada,
             zonas);
     }
+
+    private static PersonalizacionDto ToDto(
+        int idPersonalizacion,
+        int idVariante,
+        bool bloqueada,
+        IReadOnlyList<ZonaPersonalizacionDto> zonas)
+        => new(
+            idPersonalizacion,
+            idVariante,
+            bloqueada,
+            NfcUrlJson.ExtraerPrimera(zonas.Select(z => z.ConfiguracionJson)),
+            zonas);
 }

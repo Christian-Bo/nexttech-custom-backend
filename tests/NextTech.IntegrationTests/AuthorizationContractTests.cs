@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Mvc.Testing;
 using NextTech.Application.Authentication;
 using NextTech.Application.Profiles;
 
@@ -13,6 +14,20 @@ public sealed class AuthorizationContractTests : IClassFixture<NextTechApiFactor
     public AuthorizationContractTests(NextTechApiFactory factory)
     {
         _factory = factory;
+    }
+
+    [Fact]
+    public async Task NfcRedirect_WithoutToken_IsNotUnauthorized()
+    {
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        var response = await client.GetAsync("/n/ORD-NO-EXISTE");
+
+        Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.NotEqual(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
     [Fact]

@@ -6,6 +6,7 @@ using NextTech.Application.DTOs.Orders;
 using NextTech.Application.External;
 using NextTech.Application.Interfaces;
 using NextTech.Application.Modules.Orders;
+using NextTech.Application.Modules.Personalization;
 using NextTech.Application.Payments;
 using NextTech.Domain.Enums;
 using NextTech.Domain.Exceptions;
@@ -1007,6 +1008,7 @@ public sealed class OrderService(
         foreach (var detalle in detalles)
         {
             IReadOnlyList<ZonaProduccionDto> zonas = Array.Empty<ZonaProduccionDto>();
+            string? nfcUrlItem = null;
             if (detalle.IdPersonalizacion is int idPersonalizacion)
             {
                 var filas = await (
@@ -1021,7 +1023,8 @@ public sealed class OrderService(
                         z.Nombre,
                         pz.IdArchivoImagenFinal,
                         a.TipoMime,
-                        a.Datos
+                        a.Datos,
+                        pz.ConfiguracionJson
                     })
                     .ToListAsync(cancellationToken);
 
@@ -1033,6 +1036,8 @@ public sealed class OrderService(
                         fila.TipoMime,
                         Convert.ToBase64String(fila.Datos)))
                     .ToList();
+
+                nfcUrlItem = NfcUrlJson.ExtraerPrimera(filas.Select(fila => fila.ConfiguracionJson));
             }
 
             items.Add(new ItemProduccionDto(
@@ -1041,8 +1046,12 @@ public sealed class OrderService(
                 detalle.Cantidad,
                 detalle.AtributosAplicadosJson,
                 detalle.IdPersonalizacion,
-                zonas));
+                zonas,
+                nfcUrlItem,
+                NfcWriteUrl: null));
         }
+
+        var nfcUrlOrden = items.Select(item => item.NfcUrl).FirstOrDefault(url => !string.IsNullOrWhiteSpace(url));
 
         return new OrdenProduccionDto(
             orden.CodigoOrden,
@@ -1053,7 +1062,38 @@ public sealed class OrderService(
             orden.ReferenciaEntrega,
             orden.NicknameCompradorAplicado,
             orden.IdArchivoConstancia,
-            items);
+            items,
+            nfcUrlOrden,
+            NfcWriteUrl: null);
+    }
+
+    public async Task<string> ObtenerUrlNfcDestinoAsync(
+        string codigoOrden,
+        CancellationToken cancellationToken)
+    {
+        var orden = await db.Orden.AsNoTracking()
+            .FirstOrDefaultAsync(o => o.CodigoOrden == codigoOrden, cancellationToken);
+
+        if (orden is null)
+        {
+            throw new NotFoundException("La orden no existe.");
+        }
+
+        var configuraciones = await (
+            from d in db.DetalleOrden.AsNoTracking()
+            join pz in db.PersonalizacionZona.AsNoTracking()
+                on d.IdPersonalizacion equals pz.IdPersonalizacion
+            where d.IdOrden == orden.IdOrden
+            select pz.ConfiguracionJson)
+            .ToListAsync(cancellationToken);
+
+        var destino = NfcUrlJson.ExtraerPrimera(configuraciones);
+        if (string.IsNullOrWhiteSpace(destino))
+        {
+            throw new NotFoundException("Este pedido no tiene un enlace NFC.");
+        }
+
+        return NfcUrlValidator.Normalizar(destino);
     }
 
     public async Task<ArchivoDescargaDto> ObtenerArchivoProduccionAsync(

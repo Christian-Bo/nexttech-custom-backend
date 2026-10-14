@@ -88,6 +88,10 @@ public interface IOrderService
         string codigoOrden,
         CancellationToken cancellationToken);
 
+    Task<string> ObtenerUrlNfcDestinoAsync(
+        string codigoOrden,
+        CancellationToken cancellationToken);
+
     Task<ArchivoDescargaDto> ObtenerArchivoProduccionAsync(
         string codigoOrden,
         int idArchivo,
