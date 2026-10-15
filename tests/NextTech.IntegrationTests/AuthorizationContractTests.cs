@@ -17,6 +17,28 @@ public sealed class AuthorizationContractTests : IClassFixture<NextTechApiFactor
     }
 
     [Fact]
+    public async Task TrackingHub_WithoutToken_Returns401()
+    {
+        using var client = _factory.CreateClient();
+
+        var response = await client.PostAsync("/hubs/tracking/negotiate?negotiateVersion=1", content: null);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task TrackingHub_WithBuyerToken_CanNegotiate()
+    {
+        using var client = CreateAuthorizedClient(_factory.CreateBuyerToken());
+
+        var response = await client.PostAsync("/hubs/tracking/negotiate?negotiateVersion=1", content: null);
+
+        Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.NotEqual(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.True(response.IsSuccessStatusCode);
+    }
+
+    [Fact]
     public async Task NfcRedirect_WithoutToken_IsNotUnauthorized()
     {
         using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions

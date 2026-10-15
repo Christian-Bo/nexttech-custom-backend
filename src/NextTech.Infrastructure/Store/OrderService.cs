@@ -22,7 +22,8 @@ public sealed class OrderService(
     IOrderMailSender mail,
     IWhatsAppNotificationSender whatsApp,
     IRecurrenteCheckoutClient recurrente,
-    ICompradorCentralReader compradores) : IOrderService
+    ICompradorCentralReader compradores,
+    IOrderTrackingNotifier tracking) : IOrderService
 {
     public async Task<OrdenDetalleDto> CheckoutEfectivoAsync(
         long idCompradorExterno,
@@ -213,10 +214,12 @@ public sealed class OrderService(
                     ct),
                 cancellationToken);
 
-            return await ObtenerSeguimientoAsync(
+            var detalle = await ObtenerSeguimientoAsync(
                 idCompradorExterno,
                 orden.CodigoOrden,
                 cancellationToken);
+            await PublicarTrackingAsync(detalle, cancellationToken);
+            return detalle;
         }
         catch (DbUpdateException)
         {
@@ -542,6 +545,7 @@ public sealed class OrderService(
             orden.CodigoOrden));
 
         await db.SaveChangesAsync(cancellationToken);
+        await PublicarTrackingAsync(orden.IdCompradorExterno, orden.CodigoOrden, cancellationToken);
 
         await IntentarEnviarCorreoAsync(
             orden.IdOrden,
@@ -644,6 +648,8 @@ public sealed class OrderService(
             throw;
         }
 
+        await PublicarTrackingAsync(orden.IdCompradorExterno, orden.CodigoOrden, cancellationToken);
+
         await IntentarEnviarCorreoAsync(
             orden.IdOrden,
             TipoNotificacionId.PedidoEnEntrega,
@@ -744,6 +750,7 @@ public sealed class OrderService(
             orden.CodigoOrden));
 
         await db.SaveChangesAsync(cancellationToken);
+        await PublicarTrackingAsync(orden.IdCompradorExterno, orden.CodigoOrden, cancellationToken);
 
         await IntentarEnviarCorreoAsync(
             orden.IdOrden,
@@ -833,6 +840,7 @@ public sealed class OrderService(
             orden.CodigoOrden));
 
         await db.SaveChangesAsync(cancellationToken);
+        await PublicarTrackingAsync(orden.IdCompradorExterno, orden.CodigoOrden, cancellationToken);
 
         const string mensajeUsuario = "No fue posible localizarte en este intento de entrega. Tu pedido quedó disponible para un nuevo intento.";
 
@@ -917,6 +925,7 @@ public sealed class OrderService(
             orden.CodigoOrden));
 
         await db.SaveChangesAsync(cancellationToken);
+        await PublicarTrackingAsync(orden.IdCompradorExterno, orden.CodigoOrden, cancellationToken);
 
         const string mensajeUsuario = "No fue posible completar el pago en este intento de entrega. Tu pedido quedó disponible para un nuevo intento.";
 
@@ -1236,6 +1245,34 @@ public sealed class OrderService(
             ConstruirPasos(catalogoEstados, orden.IdEstadoOrdenActual),
             orden.IdArchivoConstancia,
             orden.CodigoOrden);
+    }
+
+    private Task PublicarTrackingAsync(
+        long idCompradorExterno,
+        string codigoOrden,
+        CancellationToken cancellationToken)
+        => PublicarTrackingCoreAsync(
+            () => ObtenerSeguimientoAsync(idCompradorExterno, codigoOrden, cancellationToken),
+            cancellationToken);
+
+    private Task PublicarTrackingAsync(
+        OrdenDetalleDto snapshot,
+        CancellationToken cancellationToken)
+        => PublicarTrackingCoreAsync(() => Task.FromResult(snapshot), cancellationToken);
+
+    private async Task PublicarTrackingCoreAsync(
+        Func<Task<OrdenDetalleDto>> snapshotFactory,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var snapshot = await snapshotFactory();
+            await tracking.NotifyAsync(snapshot.CodigoOrden, snapshot, cancellationToken);
+        }
+        catch
+        {
+            // El GET /tracking sigue siendo la fuente de verdad si el push falla.
+        }
     }
 
     private async Task<IReadOnlyList<OrdenColaDto>> ListarColaAsync(
@@ -1693,10 +1730,12 @@ public sealed class OrderService(
                     ct),
                 cancellationToken);
 
-            return await ObtenerSeguimientoAsync(
+            var detalle = await ObtenerSeguimientoAsync(
                 idCompradorExterno,
                 orden.CodigoOrden,
                 cancellationToken);
+            await PublicarTrackingAsync(detalle, cancellationToken);
+            return detalle;
         }
         catch (DbUpdateException)
         {
