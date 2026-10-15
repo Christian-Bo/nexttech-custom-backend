@@ -72,6 +72,7 @@ public static class DependencyInjection
         QuestPDF.Settings.License = LicenseType.Community;
         services.AddSingleton<IBuyerCredentialPdfGenerator, BuyerCredentialPdfGenerator>();
         services.AddSingleton<IPurchaseReceiptPdfGenerator, PurchaseReceiptPdfGenerator>();
+        services.AddSingleton<IKeychainPrintPdfGenerator, KeychainPrintPdfGenerator>();
 
         services.AddOptions<SmtpOptions>()
             .Bind(configuration.GetSection(SmtpOptions.SectionName))

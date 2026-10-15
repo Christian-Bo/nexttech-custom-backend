@@ -19,6 +19,7 @@ namespace NextTech.Infrastructure.Store;
 public sealed class OrderService(
     NextTechDbContext db,
     IPurchaseReceiptPdfGenerator receiptPdf,
+    IKeychainPrintPdfGenerator printPdf,
     IOrderMailSender mail,
     IWhatsAppNotificationSender whatsApp,
     IRecurrenteCheckoutClient recurrente,
@@ -1074,6 +1075,82 @@ public sealed class OrderService(
             items,
             nfcUrlOrden,
             NfcWriteUrl: null);
+    }
+
+    public Task<ArchivoDescargaDto> ObtenerHojaImpresionAsync(
+        string codigoOrden,
+        CancellationToken cancellationToken)
+        => ObtenerHojaImpresionLoteAsync([codigoOrden], cancellationToken);
+
+    public async Task<ArchivoDescargaDto> ObtenerHojaImpresionLoteAsync(
+        IReadOnlyList<string>? codigos,
+        CancellationToken cancellationToken)
+    {
+        const int maxLote = 50;
+        var seleccion = (codigos ?? [])
+            .Where(codigo => !string.IsNullOrWhiteSpace(codigo))
+            .Select(codigo => codigo.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (seleccion.Count == 0)
+        {
+            var cola = await ListarEnElaboracionAsync(cancellationToken);
+            seleccion = cola.Select(orden => orden.CodigoOrden).ToList();
+        }
+
+        if (seleccion.Count == 0)
+        {
+            throw new BusinessRuleException("No hay pedidos en elaboración para imprimir.");
+        }
+
+        if (seleccion.Count > maxLote)
+        {
+            throw new BusinessRuleException($"El lote admite como máximo {maxLote} llaveros por impresión.");
+        }
+
+        var ordenes = new List<KeychainPrintOrder>();
+        foreach (var codigo in seleccion)
+        {
+            var produccion = await ObtenerParaProduccionAsync(codigo, cancellationToken);
+            var items = MapearItemsImpresion(produccion);
+            if (items.Count == 0)
+            {
+                continue;
+            }
+
+            ordenes.Add(new KeychainPrintOrder(
+                produccion.CodigoOrden,
+                produccion.NicknameComprador,
+                items));
+        }
+
+        if (ordenes.Count == 0)
+        {
+            throw new BusinessRuleException("No hay diseños de Lado A y Lado B para imprimir.");
+        }
+
+        var documento = printPdf.Generate(new KeychainPrintPdfData(ordenes));
+        return new ArchivoDescargaDto(documento.Content, documento.ContentType, documento.FileName);
+    }
+
+    private static IReadOnlyList<KeychainPrintItem> MapearItemsImpresion(OrdenProduccionDto produccion)
+    {
+        var items = new List<KeychainPrintItem>();
+        foreach (var item in produccion.Items)
+        {
+            var zonas = item.Zonas
+                .Where(zona => !string.IsNullOrWhiteSpace(zona.ImagenBase64))
+                .Select(zona => new KeychainPrintSide(zona.Nombre, Convert.FromBase64String(zona.ImagenBase64)))
+                .ToList();
+
+            if (zonas.Count > 0)
+            {
+                items.Add(new KeychainPrintItem(item.NombreProducto, item.NombreVariante, zonas));
+            }
+        }
+
+        return items;
     }
 
     public async Task<string> ObtenerUrlNfcDestinoAsync(

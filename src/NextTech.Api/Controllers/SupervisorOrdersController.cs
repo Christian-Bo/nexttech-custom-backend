@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using NextTech.Application.Authentication;
 using NextTech.Application.Common.CurrentActor;
+using NextTech.Application.DTOs.Orders;
 using NextTech.Application.Modules.Nfc;
 using NextTech.Application.Modules.Orders;
 
@@ -27,6 +28,30 @@ public sealed class SupervisorOrdersController(
         return Ok(await orders.ListarListosParaEntregaAsync(cancellationToken));
     }
 
+    [HttpGet("print-queue")]
+    [Produces("application/pdf")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ImprimirCola(CancellationToken cancellationToken)
+    {
+        _ = actor.RequireIdUsuarioInterno();
+        var archivo = await orders.ObtenerHojaImpresionLoteAsync(null, cancellationToken);
+        Response.Headers.CacheControl = "no-store";
+        return File(archivo.Datos, archivo.TipoMime, archivo.NombreOriginal);
+    }
+
+    [HttpPost("print")]
+    [Produces("application/pdf")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ImprimirLote(
+        [FromBody] ImprimirLoteRequest? request,
+        CancellationToken cancellationToken)
+    {
+        _ = actor.RequireIdUsuarioInterno();
+        var archivo = await orders.ObtenerHojaImpresionLoteAsync(request?.Codigos, cancellationToken);
+        Response.Headers.CacheControl = "no-store";
+        return File(archivo.Datos, archivo.TipoMime, archivo.NombreOriginal);
+    }
+
     [HttpPost("{codigo}/ready")]
     public async Task<IActionResult> MarcarListo(string codigo, CancellationToken cancellationToken)
     {
@@ -44,6 +69,17 @@ public sealed class SupervisorOrdersController(
         _ = actor.RequireIdUsuarioInterno();
         var produccion = await orders.ObtenerParaProduccionAsync(codigo, cancellationToken);
         return Ok(NfcWriteUrlMapper.Apply(produccion, Request.Scheme, Request.Host.Value));
+    }
+
+    [HttpGet("{codigo}/print")]
+    [Produces("application/pdf")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> HojaImpresion(string codigo, CancellationToken cancellationToken)
+    {
+        _ = actor.RequireIdUsuarioInterno();
+        var archivo = await orders.ObtenerHojaImpresionAsync(codigo, cancellationToken);
+        Response.Headers.CacheControl = "no-store";
+        return File(archivo.Datos, archivo.TipoMime, archivo.NombreOriginal);
     }
 
     [HttpGet("{codigo}/files/{idArchivo:int}")]
