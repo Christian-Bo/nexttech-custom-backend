@@ -6,6 +6,7 @@ using NextTech.Application.DTOs.Orders;
 using NextTech.Application.External;
 using NextTech.Application.Interfaces;
 using NextTech.Application.Modules.Orders;
+using NextTech.Application.Modules.Personalization;
 using NextTech.Application.Payments;
 using NextTech.Domain.Enums;
 using NextTech.Domain.Exceptions;
@@ -18,10 +19,12 @@ namespace NextTech.Infrastructure.Store;
 public sealed class OrderService(
     NextTechDbContext db,
     IPurchaseReceiptPdfGenerator receiptPdf,
+    IKeychainPrintPdfGenerator printPdf,
     IOrderMailSender mail,
     IWhatsAppNotificationSender whatsApp,
     IRecurrenteCheckoutClient recurrente,
-    ICompradorCentralReader compradores) : IOrderService
+    ICompradorCentralReader compradores,
+    IOrderTrackingNotifier tracking) : IOrderService
 {
     public async Task<OrdenDetalleDto> CheckoutEfectivoAsync(
         long idCompradorExterno,
@@ -212,10 +215,12 @@ public sealed class OrderService(
                     ct),
                 cancellationToken);
 
-            return await ObtenerSeguimientoAsync(
+            var detalle = await ObtenerSeguimientoAsync(
                 idCompradorExterno,
                 orden.CodigoOrden,
                 cancellationToken);
+            await PublicarTrackingAsync(detalle, cancellationToken);
+            return detalle;
         }
         catch (DbUpdateException)
         {
@@ -541,6 +546,7 @@ public sealed class OrderService(
             orden.CodigoOrden));
 
         await db.SaveChangesAsync(cancellationToken);
+        await PublicarTrackingAsync(orden.IdCompradorExterno, orden.CodigoOrden, cancellationToken);
 
         await IntentarEnviarCorreoAsync(
             orden.IdOrden,
@@ -643,6 +649,8 @@ public sealed class OrderService(
             throw;
         }
 
+        await PublicarTrackingAsync(orden.IdCompradorExterno, orden.CodigoOrden, cancellationToken);
+
         await IntentarEnviarCorreoAsync(
             orden.IdOrden,
             TipoNotificacionId.PedidoEnEntrega,
@@ -743,6 +751,7 @@ public sealed class OrderService(
             orden.CodigoOrden));
 
         await db.SaveChangesAsync(cancellationToken);
+        await PublicarTrackingAsync(orden.IdCompradorExterno, orden.CodigoOrden, cancellationToken);
 
         await IntentarEnviarCorreoAsync(
             orden.IdOrden,
@@ -832,6 +841,7 @@ public sealed class OrderService(
             orden.CodigoOrden));
 
         await db.SaveChangesAsync(cancellationToken);
+        await PublicarTrackingAsync(orden.IdCompradorExterno, orden.CodigoOrden, cancellationToken);
 
         const string mensajeUsuario = "No fue posible localizarte en este intento de entrega. Tu pedido quedó disponible para un nuevo intento.";
 
@@ -916,6 +926,7 @@ public sealed class OrderService(
             orden.CodigoOrden));
 
         await db.SaveChangesAsync(cancellationToken);
+        await PublicarTrackingAsync(orden.IdCompradorExterno, orden.CodigoOrden, cancellationToken);
 
         const string mensajeUsuario = "No fue posible completar el pago en este intento de entrega. Tu pedido quedó disponible para un nuevo intento.";
 
@@ -1007,6 +1018,7 @@ public sealed class OrderService(
         foreach (var detalle in detalles)
         {
             IReadOnlyList<ZonaProduccionDto> zonas = Array.Empty<ZonaProduccionDto>();
+            string? nfcUrlItem = null;
             if (detalle.IdPersonalizacion is int idPersonalizacion)
             {
                 var filas = await (
@@ -1021,7 +1033,8 @@ public sealed class OrderService(
                         z.Nombre,
                         pz.IdArchivoImagenFinal,
                         a.TipoMime,
-                        a.Datos
+                        a.Datos,
+                        pz.ConfiguracionJson
                     })
                     .ToListAsync(cancellationToken);
 
@@ -1033,6 +1046,8 @@ public sealed class OrderService(
                         fila.TipoMime,
                         Convert.ToBase64String(fila.Datos)))
                     .ToList();
+
+                nfcUrlItem = NfcUrlJson.ExtraerPrimera(filas.Select(fila => fila.ConfiguracionJson));
             }
 
             items.Add(new ItemProduccionDto(
@@ -1041,8 +1056,12 @@ public sealed class OrderService(
                 detalle.Cantidad,
                 detalle.AtributosAplicadosJson,
                 detalle.IdPersonalizacion,
-                zonas));
+                zonas,
+                nfcUrlItem,
+                NfcWriteUrl: null));
         }
+
+        var nfcUrlOrden = items.Select(item => item.NfcUrl).FirstOrDefault(url => !string.IsNullOrWhiteSpace(url));
 
         return new OrdenProduccionDto(
             orden.CodigoOrden,
@@ -1053,7 +1072,114 @@ public sealed class OrderService(
             orden.ReferenciaEntrega,
             orden.NicknameCompradorAplicado,
             orden.IdArchivoConstancia,
-            items);
+            items,
+            nfcUrlOrden,
+            NfcWriteUrl: null);
+    }
+
+    public Task<ArchivoDescargaDto> ObtenerHojaImpresionAsync(
+        string codigoOrden,
+        CancellationToken cancellationToken)
+        => ObtenerHojaImpresionLoteAsync([codigoOrden], cancellationToken);
+
+    public async Task<ArchivoDescargaDto> ObtenerHojaImpresionLoteAsync(
+        IReadOnlyList<string>? codigos,
+        CancellationToken cancellationToken)
+    {
+        const int maxLote = 50;
+        var seleccion = (codigos ?? [])
+            .Where(codigo => !string.IsNullOrWhiteSpace(codigo))
+            .Select(codigo => codigo.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (seleccion.Count == 0)
+        {
+            var cola = await ListarEnElaboracionAsync(cancellationToken);
+            seleccion = cola.Select(orden => orden.CodigoOrden).ToList();
+        }
+
+        if (seleccion.Count == 0)
+        {
+            throw new BusinessRuleException("No hay pedidos en elaboración para imprimir.");
+        }
+
+        if (seleccion.Count > maxLote)
+        {
+            throw new BusinessRuleException($"El lote admite como máximo {maxLote} llaveros por impresión.");
+        }
+
+        var ordenes = new List<KeychainPrintOrder>();
+        foreach (var codigo in seleccion)
+        {
+            var produccion = await ObtenerParaProduccionAsync(codigo, cancellationToken);
+            var items = MapearItemsImpresion(produccion);
+            if (items.Count == 0)
+            {
+                continue;
+            }
+
+            ordenes.Add(new KeychainPrintOrder(
+                produccion.CodigoOrden,
+                produccion.NicknameComprador,
+                items));
+        }
+
+        if (ordenes.Count == 0)
+        {
+            throw new BusinessRuleException("No hay diseños de Lado A y Lado B para imprimir.");
+        }
+
+        var documento = printPdf.Generate(new KeychainPrintPdfData(ordenes));
+        return new ArchivoDescargaDto(documento.Content, documento.ContentType, documento.FileName);
+    }
+
+    private static IReadOnlyList<KeychainPrintItem> MapearItemsImpresion(OrdenProduccionDto produccion)
+    {
+        var items = new List<KeychainPrintItem>();
+        foreach (var item in produccion.Items)
+        {
+            var zonas = item.Zonas
+                .Where(zona => !string.IsNullOrWhiteSpace(zona.ImagenBase64))
+                .Select(zona => new KeychainPrintSide(zona.Nombre, Convert.FromBase64String(zona.ImagenBase64)))
+                .ToList();
+
+            if (zonas.Count > 0)
+            {
+                items.Add(new KeychainPrintItem(item.NombreProducto, item.NombreVariante, zonas));
+            }
+        }
+
+        return items;
+    }
+
+    public async Task<string> ObtenerUrlNfcDestinoAsync(
+        string codigoOrden,
+        CancellationToken cancellationToken)
+    {
+        var orden = await db.Orden.AsNoTracking()
+            .FirstOrDefaultAsync(o => o.CodigoOrden == codigoOrden, cancellationToken);
+
+        if (orden is null)
+        {
+            throw new NotFoundException("La orden no existe.");
+        }
+
+        var configuraciones = await (
+            from d in db.DetalleOrden.AsNoTracking()
+            join pz in db.PersonalizacionZona.AsNoTracking()
+                on d.IdPersonalizacion equals pz.IdPersonalizacion
+            where d.IdOrden == orden.IdOrden
+            select pz.ConfiguracionJson)
+            .ToListAsync(cancellationToken);
+
+        var destino = NfcUrlJson.ExtraerPrimera(configuraciones);
+        if (string.IsNullOrWhiteSpace(destino))
+        {
+            throw new NotFoundException("Este pedido no tiene un enlace NFC.");
+        }
+
+        return NfcUrlValidator.Normalizar(destino);
     }
 
     public async Task<ArchivoDescargaDto> ObtenerArchivoProduccionAsync(
@@ -1196,6 +1322,34 @@ public sealed class OrderService(
             ConstruirPasos(catalogoEstados, orden.IdEstadoOrdenActual),
             orden.IdArchivoConstancia,
             orden.CodigoOrden);
+    }
+
+    private Task PublicarTrackingAsync(
+        long idCompradorExterno,
+        string codigoOrden,
+        CancellationToken cancellationToken)
+        => PublicarTrackingCoreAsync(
+            () => ObtenerSeguimientoAsync(idCompradorExterno, codigoOrden, cancellationToken),
+            cancellationToken);
+
+    private Task PublicarTrackingAsync(
+        OrdenDetalleDto snapshot,
+        CancellationToken cancellationToken)
+        => PublicarTrackingCoreAsync(() => Task.FromResult(snapshot), cancellationToken);
+
+    private async Task PublicarTrackingCoreAsync(
+        Func<Task<OrdenDetalleDto>> snapshotFactory,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var snapshot = await snapshotFactory();
+            await tracking.NotifyAsync(snapshot.CodigoOrden, snapshot, cancellationToken);
+        }
+        catch
+        {
+            // El GET /tracking sigue siendo la fuente de verdad si el push falla.
+        }
     }
 
     private async Task<IReadOnlyList<OrdenColaDto>> ListarColaAsync(
@@ -1653,10 +1807,12 @@ public sealed class OrderService(
                     ct),
                 cancellationToken);
 
-            return await ObtenerSeguimientoAsync(
+            var detalle = await ObtenerSeguimientoAsync(
                 idCompradorExterno,
                 orden.CodigoOrden,
                 cancellationToken);
+            await PublicarTrackingAsync(detalle, cancellationToken);
+            return detalle;
         }
         catch (DbUpdateException)
         {

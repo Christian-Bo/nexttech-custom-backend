@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Mvc.Testing;
 using NextTech.Application.Authentication;
 using NextTech.Application.Profiles;
 
@@ -13,6 +14,41 @@ public sealed class AuthorizationContractTests : IClassFixture<NextTechApiFactor
     public AuthorizationContractTests(NextTechApiFactory factory)
     {
         _factory = factory;
+    }
+
+    [Fact]
+    public async Task TrackingHub_WithoutToken_Returns401()
+    {
+        using var client = _factory.CreateClient();
+
+        var response = await client.PostAsync("/hubs/tracking/negotiate?negotiateVersion=1", content: null);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task TrackingHub_WithBuyerToken_CanNegotiate()
+    {
+        using var client = CreateAuthorizedClient(_factory.CreateBuyerToken());
+
+        var response = await client.PostAsync("/hubs/tracking/negotiate?negotiateVersion=1", content: null);
+
+        Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.NotEqual(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.True(response.IsSuccessStatusCode);
+    }
+
+    [Fact]
+    public async Task NfcRedirect_WithoutToken_IsNotUnauthorized()
+    {
+        using var client = _factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        var response = await client.GetAsync("/n/ORD-NO-EXISTE");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]

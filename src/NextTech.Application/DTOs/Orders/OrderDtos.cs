@@ -98,7 +98,9 @@ public sealed record ItemProduccionDto(
     int Cantidad,
     string AtributosJson,
     int? IdPersonalizacion,
-    IReadOnlyList<ZonaProduccionDto> Zonas);
+    IReadOnlyList<ZonaProduccionDto> Zonas,
+    string? NfcUrl,
+    string? NfcWriteUrl);
 
 public sealed record OrdenProduccionDto(
     string CodigoOrden,
@@ -109,7 +111,11 @@ public sealed record OrdenProduccionDto(
     string ReferenciaEntrega,
     string NicknameComprador,
     int? IdArchivoConstancia,
-    IReadOnlyList<ItemProduccionDto> Items);
+    IReadOnlyList<ItemProduccionDto> Items,
+    string? NfcUrl,
+    string? NfcWriteUrl);
+
+public sealed record ImprimirLoteRequest(IReadOnlyList<string>? Codigos);
 
 public sealed record ArchivoDescargaDto(
     byte[] Datos,

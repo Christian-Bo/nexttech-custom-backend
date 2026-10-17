@@ -3,17 +3,20 @@ using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.OpenApi.Models;
 using NextTech.Api.Configuration;
 using NextTech.Api.CurrentActor;
 using NextTech.Api.Extensions;
 using NextTech.Api.Middleware;
+using NextTech.Api.Realtime;
 using NextTech.Application.Common.CurrentActor;
 using NextTech.Application.Modules.Auth;
 using NextTech.Application.Modules.Credentials;
 using NextTech.Application.Modules.Face;
 using NextTech.Application.Modules.Notifications;
 using NextTech.Application.Modules.Onboarding;
+using NextTech.Application.Modules.Orders;
 using NextTech.Application.Modules.Profile;
 using NextTech.Infrastructure;
 
@@ -22,6 +25,7 @@ LocalEnvLoader.Load();
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
+builder.Services.AddSignalR();
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<DomainExceptionHandler>();
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
@@ -37,6 +41,7 @@ builder.Services.AddScoped<BuyerNotificationService>();
 builder.Services.AddScoped<BuyerOnboardingService>();
 builder.Services.AddScoped<FaceApplicationService>();
 builder.Services.AddScoped<BuyerProfileService>();
+builder.Services.Replace(ServiceDescriptor.Singleton<IOrderTrackingNotifier, SignalROrderTrackingNotifier>());
 builder.Services.AddNextTechAuthorization();
 
 var allowedOrigins = builder.Configuration
@@ -80,6 +85,7 @@ builder.Services.AddCors(options =>
             .WithOrigins(allowedOrigins)
             .AllowAnyHeader()
             .AllowAnyMethod()
+            .AllowCredentials()
             .SetPreflightMaxAge(TimeSpan.FromMinutes(10));
     });
 });
@@ -165,6 +171,17 @@ builder.Services.AddRateLimiter(options =>
                 QueueLimit = 0,
                 AutoReplenishment = true
             }));
+
+    options.AddPolicy("nfc-redirect", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: GetClientPartitionKey(httpContext),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 60,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
 });
 
 builder.Services.AddEndpointsApiExplorer();
@@ -229,6 +246,7 @@ app.UseRateLimiter();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<TrackingHub>("/hubs/tracking");
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions
 {

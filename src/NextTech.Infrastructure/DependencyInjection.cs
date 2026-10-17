@@ -24,6 +24,7 @@ using NextTech.Infrastructure.Persistence.Oracle;
 using NextTech.Infrastructure.Persistence.Oracle.Repositories;
 using NextTech.Infrastructure.Persistence.SqlServer;
 using NextTech.Infrastructure.Persistence.SqlServer.Repositories;
+using NextTech.Infrastructure.Realtime;
 using NextTech.Infrastructure.Store;
 using NextTech.Infrastructure.WhatsApp;
 using QuestPDF.Infrastructure;
@@ -65,11 +66,13 @@ public static class DependencyInjection
         services.AddScoped<IPersonalizationService, PersonalizationService>();
         services.AddScoped<ICartService, CartService>();
         services.AddScoped<IOrderService, OrderService>();
+        services.AddSingleton<IOrderTrackingNotifier, NoOpOrderTrackingNotifier>();
         services.AddScoped<IDashboardService, DashboardService>();
 
         QuestPDF.Settings.License = LicenseType.Community;
         services.AddSingleton<IBuyerCredentialPdfGenerator, BuyerCredentialPdfGenerator>();
         services.AddSingleton<IPurchaseReceiptPdfGenerator, PurchaseReceiptPdfGenerator>();
+        services.AddSingleton<IKeychainPrintPdfGenerator, KeychainPrintPdfGenerator>();
 
         services.AddOptions<SmtpOptions>()
             .Bind(configuration.GetSection(SmtpOptions.SectionName))
@@ -231,6 +234,22 @@ public static class DependencyInjection
                     ClockSkew = TimeSpan.FromMinutes(1),
                     RoleClaimType = ClaimTypes.Role,
                     NameClaimType = ClaimTypes.NameIdentifier
+                };
+
+                options.Events = new JwtBearerEvents
+                {
+                    OnMessageReceived = context =>
+                    {
+                        var accessToken = context.Request.Query["access_token"];
+                        var path = context.HttpContext.Request.Path;
+                        if (!string.IsNullOrEmpty(accessToken) &&
+                            path.StartsWithSegments("/hubs"))
+                        {
+                            context.Token = accessToken;
+                        }
+
+                        return Task.CompletedTask;
+                    }
                 };
             });
 
