@@ -39,7 +39,7 @@ public sealed class WhatsAppNotificationSender(
             $"🏷️ Usuario: {nickname}\n" +
             "🔐 Contraseña: configurada de forma segura\n\n" +
             "🛡️ *Tu seguridad es importante*\n" +
-            "NextTech Custom nunca enviará tu contraseña ni el valor interno de tu credencial QR por mensajes. " +
+            "NextTech Custom nunca envía tu contraseña ni el valor interno de tu credencial QR por mensajes. " +
             "Si olvidas tu contraseña, utiliza la opción de recuperación de acceso.\n\n" +
             "✨ Gracias por formar parte de *NextTech Custom*.";
 
