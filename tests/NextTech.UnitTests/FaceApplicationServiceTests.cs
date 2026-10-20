@@ -33,6 +33,22 @@ public sealed class FaceApplicationServiceTests
     }
 
     [Fact]
+    public async Task Enroll_RegistersStableOracleBuyerIdWithOriginalImage_WhenFeatureEnabled()
+    {
+        var gateway = new StubGateway(ActiveBuyer());
+        var biometrics = new StubBiometrics(authenticated: true, identificationEnabled: true);
+        var store = new StubStore();
+        var service = new FaceApplicationService(gateway, biometrics, store);
+
+        await service.EnrollBuyerAsync(21, "challenge-1",
+            Image("neutral.jpg"), Image("challenge.jpg"), CancellationToken.None);
+
+        Assert.Equal(21, biometrics.RegisteredBuyerId);
+        Assert.Equal("neutral.jpg", biometrics.RegisteredImage?.FileName);
+        Assert.NotNull(store.Stored);
+    }
+
+    [Fact]
     public async Task Enroll_DoesNotPersistWhenLivenessOrIdentityFails()
     {
         var gateway = new StubGateway(ActiveBuyer());
@@ -94,9 +110,11 @@ public sealed class FaceApplicationServiceTests
     private static FaceImage Image(string name)
         => new([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3], "image/jpeg", name);
 
-    private sealed class StubBiometrics(bool authenticated) : IFaceBiometricService
+    private sealed class StubBiometrics(bool authenticated, bool identificationEnabled = false) : IFaceBiometricService
     {
-        public bool IdentificationEnabled => false;
+        public bool IdentificationEnabled => identificationEnabled;
+        public long? RegisteredBuyerId { get; private set; }
+        public FaceImage? RegisteredImage { get; private set; }
 
         public List<FaceImage> TemplateSourceImages { get; } = [];
         public string? LastVerificationTemplate { get; private set; }
@@ -147,7 +165,14 @@ public sealed class FaceApplicationServiceTests
             long buyerId,
             FaceImage referenceImage,
             CancellationToken ct)
-            => Task.CompletedTask;
+        {
+            RegisteredBuyerId = buyerId;
+            RegisteredImage = referenceImage;
+            return Task.CompletedTask;
+        }
+
+        public Task<FaceQuickIdentificationResult> IdentifyAsync(FaceImage image, CancellationToken ct)
+            => throw new NotSupportedException();
 
         public Task<FaceIdentificationResult> IdentifyLiveAsync(
             string challengeId,

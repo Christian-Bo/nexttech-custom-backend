@@ -39,6 +39,21 @@ public sealed class BuyerAuthServiceNotificationTests
     }
 
     [Fact]
+    public async Task Register_WithLocalEightDigitPhone_PassesUnmodifiedPhoneToGateway()
+    {
+        var buyer = ActiveBuyer(notifyByEmail: false, notifyByWhatsApp: true);
+        var gateway = new StubGateway(buyer);
+        var service = CreateService(
+            gateway, new StubRegistrationNotificationSender(), new StubWhatsAppNotificationSender());
+
+        await service.RegisterAsync(new BuyerRegisterRequest(
+            "buyer@example.test", "55550101", "buyer", "Password1", null,
+            NotifyByEmail: false, NotifyByWhatsApp: true), CancellationToken.None);
+
+        Assert.Equal("55550101", gateway.RegistrationData?.Telefono);
+    }
+
+    [Fact]
     public async Task Register_WithEmailAndWhatsApp_SendsWelcomeThroughBothChannels()
     {
         var buyer = ActiveBuyer(notifyByEmail: true, notifyByWhatsApp: true);
@@ -310,6 +325,9 @@ public sealed class BuyerAuthServiceNotificationTests
             FaceImage referenceImage,
             CancellationToken ct)
             => Task.CompletedTask;
+
+        public Task<FaceQuickIdentificationResult> IdentifyAsync(FaceImage image, CancellationToken ct)
+            => throw new NotSupportedException();
 
         public Task<FaceIdentificationResult> IdentifyLiveAsync(
             string challengeId,

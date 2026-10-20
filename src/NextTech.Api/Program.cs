@@ -194,6 +194,10 @@ builder.Services.AddSwaggerGen(options =>
         Description = "API del proyecto NextTech Custom."
     });
 
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, "NextTech.Api.xml");
+    if (File.Exists(xmlPath))
+        options.IncludeXmlComments(xmlPath);
+
     var bearer = new OpenApiSecurityScheme
     {
         Name = "Authorization",

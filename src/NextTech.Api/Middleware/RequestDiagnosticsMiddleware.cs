@@ -11,9 +11,12 @@ public sealed class RequestDiagnosticsMiddleware(
     ILogger<RequestDiagnosticsMiddleware> logger,
     IHostEnvironment environment)
 {
+    public const string RequestStopwatchKey = "NextTech.RequestStopwatch";
+
     public async Task InvokeAsync(HttpContext context)
     {
         var stopwatch = Stopwatch.StartNew();
+        context.Items[RequestStopwatchKey] = stopwatch;
         var traceId = context.TraceIdentifier;
         context.Response.Headers["X-Trace-Id"] = traceId;
 

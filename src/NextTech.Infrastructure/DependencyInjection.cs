@@ -138,7 +138,9 @@ public static class DependencyInjection
                 IsRelativeApiPath(options.LivenessPath) &&
                 IsRelativeApiPath(options.VerifyPath) &&
                 (!options.IdentificationEnabled ||
-                 (IsRelativeApiPath(options.IdentityEnrollPath) && IsRelativeApiPath(options.IdentifyPath))),
+                 (IsRelativeApiPath(options.IdentityEnrollPath) &&
+                  IsRelativeApiPath(options.IdentifyPath) &&
+                  IsRelativeApiPath(options.IdentifyLivePath))),
                 "Las rutas de FaceApi deben comenzar con '/'.")
             .Validate(static options =>
                 !string.IsNullOrWhiteSpace(options.ApiKey) &&
