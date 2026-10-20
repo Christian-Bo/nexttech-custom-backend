@@ -33,7 +33,11 @@ public sealed class DomainExceptionHandler : IExceptionHandler
         };
 
         httpContext.Response.StatusCode = status;
-        await httpContext.Response.WriteAsJsonAsync(problem, cancellationToken);
+        await httpContext.Response.WriteAsJsonAsync(
+            problem,
+            options: null,
+            contentType: "application/problem+json",
+            cancellationToken: cancellationToken);
         return true;
     }
 }

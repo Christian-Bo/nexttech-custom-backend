@@ -2,11 +2,11 @@ using System.Diagnostics;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using NextTech.Api.Middleware;
 using NextTech.Application.Common;
 using NextTech.Application.Common.CurrentActor;
 using NextTech.Application.Face;
 using NextTech.Application.Modules.Auth;
-using NextTech.Api.Middleware;
 
 namespace NextTech.Api.Controllers;
 
