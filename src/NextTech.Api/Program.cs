@@ -89,7 +89,6 @@ builder.Services.AddRateLimiter(options =>
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     options.OnRejected = async (context, ct) =>
     {
-        context.HttpContext.Response.ContentType = "application/problem+json";
         await context.HttpContext.Response.WriteAsJsonAsync(new
         {
             type = "about:blank",
@@ -97,7 +96,7 @@ builder.Services.AddRateLimiter(options =>
             status = StatusCodes.Status429TooManyRequests,
             detail = "Demasiadas solicitudes. Intente nuevamente más tarde.",
             traceId = context.HttpContext.TraceIdentifier
-        }, ct);
+        }, options: null, contentType: "application/problem+json", cancellationToken: ct);
     };
 
     options.AddPolicy("auth", httpContext =>
