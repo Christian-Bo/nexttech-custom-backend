@@ -1,6 +1,8 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
     <RootNamespace>NextTech.Api</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
     <UserSecretsId>2588aa30-80b1-44ca-b999-8401b11aa569</UserSecretsId>
   </PropertyGroup>
 

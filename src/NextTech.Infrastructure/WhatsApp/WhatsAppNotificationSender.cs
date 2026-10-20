@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using NextTech.Application.Common;
 using NextTech.Application.Credentials;
 using NextTech.Application.Interfaces;
 using NextTech.Infrastructure.Email;
@@ -43,9 +44,10 @@ public sealed class WhatsAppNotificationSender(
             "Si olvidas tu contraseña, utiliza la opción de recuperación de acceso.\n\n" +
             "✨ Gracias por formar parte de *NextTech Custom*.";
 
-        return SendAsync(
+        return SendAsync<WhatsAppTextRequest>(
             "messages/text",
-            new WhatsAppTextRequest(phone, message),
+            phone,
+            normalizedPhone => new WhatsAppTextRequest(normalizedPhone, message),
             "registration-welcome",
             ct);
     }
@@ -125,9 +127,10 @@ public sealed class WhatsAppNotificationSender(
             $"⏳ El enlace vence el {expiresAt.ToLocalTime():dd/MM/yyyy 'a las' HH:mm}.\n\n" +
             "⚠️ Si tú no solicitaste este cambio, ignora el mensaje y no compartas el enlace con nadie.";
 
-        return SendAsync(
+        return SendAsync<WhatsAppTextRequest>(
             "messages/text",
-            new WhatsAppTextRequest(phone, message),
+            phone,
+            normalizedPhone => new WhatsAppTextRequest(normalizedPhone, message),
             "password-recovery",
             ct);
     }
@@ -148,9 +151,10 @@ public sealed class WhatsAppNotificationSender(
             $"🕒 Hora: {DateTimeOffset.Now:HH:mm}\n\n" +
             "⚠️ Si tú no realizaste este cambio, comunícate inmediatamente con soporte y protege tu cuenta.";
 
-        return SendAsync(
+        return SendAsync<WhatsAppTextRequest>(
             "messages/text",
-            new WhatsAppTextRequest(phone, message),
+            phone,
+            normalizedPhone => new WhatsAppTextRequest(normalizedPhone, message),
             "password-changed",
             ct);
     }
@@ -257,9 +261,10 @@ public sealed class WhatsAppNotificationSender(
         if (!_options.Enabled)
             return Task.FromResult(false);
 
-        return SendAsync(
+        return SendAsync<WhatsAppTextRequest>(
             "messages/text",
-            new WhatsAppTextRequest(phone, message),
+            phone,
+            normalizedPhone => new WhatsAppTextRequest(normalizedPhone, message),
             notificationType,
             ct);
     }
@@ -285,10 +290,11 @@ public sealed class WhatsAppNotificationSender(
             return Task.FromResult(false);
         }
 
-        return SendAsync(
+        return SendAsync<WhatsAppMediaRequest>(
             "messages/media",
-            new WhatsAppMediaRequest(
-                phone,
+            phone,
+            normalizedPhone => new WhatsAppMediaRequest(
+                normalizedPhone,
                 caption,
                 fileName,
                 contentType,
@@ -299,13 +305,23 @@ public sealed class WhatsAppNotificationSender(
 
     private async Task<bool> SendAsync<TRequest>(
         string relativePath,
-        TRequest payload,
+        string phone,
+        Func<string, TRequest> createPayload,
         string notificationType,
         CancellationToken ct)
     {
+        if (!GuatemalaPhoneNumber.TryNormalizeForWhatsApp(phone, out var normalizedPhone))
+        {
+            logger.LogWarning(
+                "No se envió la notificación WhatsApp {NotificationType}: teléfono de Guatemala no válido.",
+                notificationType);
+            return false;
+        }
+
         try
         {
-            using var response = await httpClient.PostAsJsonAsync(relativePath, payload, ct);
+            using var response = await httpClient.PostAsJsonAsync(
+                relativePath, createPayload(normalizedPhone), ct);
 
             if (response.IsSuccessStatusCode)
                 return true;

@@ -78,6 +78,18 @@ public sealed record FaceIdentificationResult(
     decimal? Threshold,
     string? Message = null);
 
+// Internal-only provider diagnostics. Never serialize this as a public HTTP response.
+public sealed record FaceQuickIdentificationResult(
+    bool Identified,
+    string? SubjectId,
+    decimal? Similarity,
+    decimal? Threshold,
+    double? FaceApiProcessingMs,
+    double? FaceApiSearchMs,
+    double? FaceApiEmbeddingMs,
+    double FaceApiHttpMs,
+    string? FaceApiTraceId);
+
 public sealed record FaceSegmentationResult(
     byte[] Content,
     string ContentType,

@@ -51,3 +51,19 @@ public sealed class AppProviderRejectedException(
         ? nameof(AppProviderRejectedException)
         : errorCode;
 }
+
+// Authentication errors with a safe provider correlation ID. Never include candidate data.
+public sealed class AppFaceIdentificationException(
+    string code,
+    string message,
+    int statusCode,
+    string? faceApiTraceId = null) : AppException(message)
+{
+    public override int StatusCode { get; } = statusCode;
+    public override string ErrorCode { get; } = code;
+    public string? FaceApiTraceId { get; } =
+        faceApiTraceId is { Length: > 0 and <= 128 } &&
+        faceApiTraceId.All(static c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or ':')
+            ? faceApiTraceId
+            : null;
+}

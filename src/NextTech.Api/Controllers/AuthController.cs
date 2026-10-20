@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -5,6 +6,7 @@ using NextTech.Application.Common;
 using NextTech.Application.Common.CurrentActor;
 using NextTech.Application.Face;
 using NextTech.Application.Modules.Auth;
+using NextTech.Api.Middleware;
 
 namespace NextTech.Api.Controllers;
 
@@ -14,7 +16,8 @@ public sealed class AuthController(
     BuyerAuthService auth,
     IConfiguration configuration,
     IHostEnvironment environment,
-    ICurrentActor actor) : ControllerBase
+    ICurrentActor actor,
+    ILogger<AuthController> logger) : ControllerBase
 {
     [EnableRateLimiting("auth")]
     [HttpPost("register")]
@@ -71,27 +74,46 @@ public sealed class AuthController(
     public Task<FaceChallengeResult> FaceChallenge(CancellationToken ct)
         => auth.CreateFaceLoginChallengeAsync(ct);
 
+    /// <summary>Identifica un comprador 1:N usando solo una captura frontal limpia (sin challenge).</summary>
+    /// <remarks>Modo rápido sin prueba de vida; retorna el mismo JWT que el login tradicional.
+    /// Solo admite un campo multipart llamado image. Requiere FACE_API_IDENTIFICATION_ENABLED=true.</remarks>
     [EnableRateLimiting("biometric")]
     [HttpPost("face-identify-login")]
     [Consumes("multipart/form-data")]
-    [RequestSizeLimit(12 * 1024 * 1024)]
+    [RequestSizeLimit(6 * 1024 * 1024)]
     [ProducesResponseType(typeof(NextTech.Application.Authentication.AccessTokenResult), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
-    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status503ServiceUnavailable)]
     public async Task<NextTech.Application.Authentication.AccessTokenResult> FaceIdentifyLogin(
         [FromForm] FaceIdentifyLoginFormRequest request,
         CancellationToken ct)
     {
-        var neutral = await FaceRequestMapper.ReadImageAsync(request.NeutralImage, "neutralImage", ct);
-        var challenge = await FaceRequestMapper.ReadImageAsync(request.ChallengeImage, "challengeImage", ct);
+        // Started before MVC parses the multipart request, so this includes upload handling.
+        var total = HttpContext.Items[RequestDiagnosticsMiddleware.RequestStopwatchKey] as Stopwatch
+            ?? Stopwatch.StartNew();
+        var image = await FaceRequestMapper.ReadImageAsync(request.Image, "image", ct);
+        var outcome = await auth.LoginByFaceIdentificationAsync(image, ct);
 
-        return await auth.LoginByFaceIdentificationAsync(
-            request.ChallengeId,
-            neutral,
-            challenge,
-            ct);
+        var faceApiHttpMs = outcome.Identification.FaceApiHttpMs;
+        var customProcessingMs = Math.Max(0, total.Elapsed.TotalMilliseconds - faceApiHttpMs);
+        logger.LogInformation(
+            "FaceIdentifyLogin completed. CustomProcessingMs={customProcessingMs} " +
+            "FaceApiProcessingMs={faceApiProcessingMs} FaceApiSearchMs={faceApiSearchMs} " +
+            "FaceApiHttpMs={faceApiHttpMs} TotalLoginMs={totalLoginMs} " +
+            "FaceApiTraceId={faceApiTraceId} TraceId={traceId}",
+            Math.Round(customProcessingMs, 2),
+            outcome.Identification.FaceApiProcessingMs,
+            outcome.Identification.FaceApiSearchMs,
+            Math.Round(faceApiHttpMs, 2),
+            Math.Round(total.Elapsed.TotalMilliseconds, 2),
+            outcome.Identification.FaceApiTraceId,
+            HttpContext.TraceIdentifier);
+
+        return outcome.Token;
     }
 
     [EnableRateLimiting("biometric")]
@@ -130,7 +152,6 @@ public sealed class FaceLoginFormRequest
 
 public sealed class FaceIdentifyLoginFormRequest
 {
-    public string ChallengeId { get; init; } = string.Empty;
-    public IFormFile? NeutralImage { get; init; }
-    public IFormFile? ChallengeImage { get; init; }
+    /// <summary>Fotografía frontal limpia (JPEG, PNG o WebP; máximo 5 MB).</summary>
+    public IFormFile? Image { get; init; }
 }

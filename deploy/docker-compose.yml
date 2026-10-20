@@ -60,11 +60,15 @@ services:
       WhatsApp__ApiKeyHeader: ${WHATSAPP_API_KEY_HEADER:-X-API-Key}
       WhatsApp__TimeoutSeconds: ${WHATSAPP_API_TIMEOUT_SECONDS:-30}
 
-      FaceApi__BaseUrl: ${FACE_API_BASE_URL:-}
+      FaceApi__BaseUrl: ${FACE_API_BASE_URL:-https://nexttech-face-api.34-174-37-7.sslip.io}
       FaceApi__EnrollPath: ${FACE_API_ENROLL_PATH:-/api/v1/faces/enroll}
       FaceApi__SegmentPath: ${FACE_API_SEGMENT_PATH:-/api/v1/faces/segment/image}
       FaceApi__LivenessPath: ${FACE_API_LIVENESS_PATH:-/api/v1/faces/liveness/challenge}
       FaceApi__VerifyPath: ${FACE_API_VERIFY_PATH:-/api/v1/faces/verify-template-live}
+      FaceApi__IdentificationEnabled: ${FACE_API_IDENTIFICATION_ENABLED:-false}
+      FaceApi__IdentityEnrollPath: ${FACE_API_IDENTITY_ENROLL_PATH:-/api/v1/faces/identity/enroll}
+      FaceApi__IdentifyPath: ${FACE_API_IDENTIFY_PATH:-/api/v1/faces/identify}
+      FaceApi__IdentifyLivePath: ${FACE_API_IDENTIFY_LIVE_PATH:-/api/v1/faces/identify-live}
       FaceApi__ApiKey: ${FACE_API_KEY:-}
       FaceApi__ApiKeyHeader: ${FACE_API_KEY_HEADER:-X-Internal-Api-Key}
       FaceApi__TimeoutSeconds: ${FACE_API_TIMEOUT_SECONDS:-30}

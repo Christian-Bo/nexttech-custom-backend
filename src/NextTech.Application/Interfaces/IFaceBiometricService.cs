@@ -24,6 +24,10 @@ public interface IFaceBiometricService
         FaceImage referenceImage,
         CancellationToken ct);
 
+    Task<FaceQuickIdentificationResult> IdentifyAsync(
+        FaceImage image,
+        CancellationToken ct);
+
     Task<FaceIdentificationResult> IdentifyLiveAsync(
         string challengeId,
         FaceImage neutralImage,
