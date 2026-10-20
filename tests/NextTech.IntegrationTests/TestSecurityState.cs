@@ -22,6 +22,9 @@ public sealed class TestSecurityState :
     public void SetBuyer(bool active = true, bool blocked = false)
         => Buyer = CreateBuyer(active, blocked);
 
+    public void SetBuyerWithoutFaceEnrollment()
+        => Buyer = Buyer with { IdFotoOriginal = null, IdFotoModificada = null };
+
     public void SetInternalUser(
         string role = InternalRoles.Admin,
         bool active = true,

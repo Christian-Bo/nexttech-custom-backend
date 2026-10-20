@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using NextTech.Application.Authentication;
@@ -30,6 +31,11 @@ public sealed record RecoveryTokenResult(string Token, DateTimeOffset ExpiresAt)
 public sealed record InternalLoginRequest(string Email, string Password);
 public sealed record ChangeInternalPasswordRequest(string CurrentPassword, string NewPassword);
 
+// Never serialize Identification to the client: it contains provider-only metrics.
+public sealed record FaceIdentifyLoginOutcome(
+    AccessTokenResult Token,
+    FaceQuickIdentificationResult Identification);
+
 public sealed class BuyerAuthService(
     ICentralIdentityGateway gateway,
     IPasswordService passwords,
@@ -53,7 +59,7 @@ public sealed class BuyerAuthService(
             throw new AppValidationException("El nickname es obligatorio y no puede exceder 50 caracteres.");
         if (!request.NotifyByEmail && !request.NotifyByWhatsApp)
             throw new AppValidationException("Debe habilitar al menos un canal de notificación.");
-        if (request.NotifyByWhatsApp && !IsSupportedWhatsAppPhone(phone))
+        if (request.NotifyByWhatsApp && !GuatemalaPhoneNumber.TryNormalizeForWhatsApp(phone, out _))
             throw new AppValidationException(
                 "Para notificaciones por WhatsApp use 8 dígitos de Guatemala o 502 seguido de 8 dígitos.");
 
@@ -292,42 +298,40 @@ public sealed class BuyerAuthService(
         return tokens.CreateBuyerToken(ToProfile(buyer));
     }
 
-    public async Task<AccessTokenResult> LoginByFaceIdentificationAsync(
-        string challengeId,
-        FaceImage neutralImage,
-        FaceImage challengeImage,
+    public async Task<FaceIdentifyLoginOutcome> LoginByFaceIdentificationAsync(
+        FaceImage image,
         CancellationToken ct)
     {
         if (!faceBiometrics.IdentificationEnabled)
-            throw new AppConflictException("La identificación facial directa todavía no está habilitada en la Face API.");
-        if (string.IsNullOrWhiteSpace(challengeId) || challengeId.Length > 200)
-            throw new AppValidationException("El challengeId es obligatorio y debe ser válido.");
+            throw new AppConflictException("El inicio de sesión facial rápido todavía no está habilitado.");
 
-        FaceImageValidator.Validate(neutralImage);
-        FaceImageValidator.Validate(challengeImage);
+        FaceImageValidator.Validate(image);
+        var identification = await faceBiometrics.IdentifyAsync(image, ct);
+        const string publicError = "No fue posible autenticar mediante reconocimiento facial.";
 
-        var result = await faceBiometrics.IdentifyLiveAsync(
-            challengeId.Trim(),
-            neutralImage,
-            challengeImage,
-            ct);
-
-        if (!result.AuthenticationPassed || !result.IsLive || !result.Identified || result.BuyerId is null)
+        if (!identification.Identified ||
+            !long.TryParse(identification.SubjectId, NumberStyles.None,
+                CultureInfo.InvariantCulture, out var buyerId) ||
+            buyerId <= 0 ||
+            identification.Similarity is null ||
+            identification.Threshold is null ||
+            identification.Similarity < identification.Threshold)
         {
-            await gateway.RegisterFailedLoginAsync(null, "face-identification", "FACIAL", "Rostro no identificado", ct);
-            throw new AppUnauthorizedException("No fue posible identificar el rostro.");
+            await gateway.RegisterFailedLoginAsync(null, "face-identification", "FACIAL", "Identificación rechazada", ct);
+            throw new AppUnauthorizedException(publicError);
         }
 
-        var buyer = await gateway.FindByIdAsync(result.BuyerId.Value, ct);
-        if (buyer is null)
+        // Fast indexed lookup: only one buyer is read; photographs and templates are not loaded.
+        var buyer = await gateway.FindByIdAsync(buyerId, ct);
+        if (buyer is null || !buyer.Activo || buyer.Bloqueado ||
+            buyer.IdFotoOriginal is null || buyer.IdFotoModificada is null)
         {
-            await gateway.RegisterFailedLoginAsync(null, "face-identification", "FACIAL", "Sujeto biométrico sin comprador", ct);
-            throw new AppUnauthorizedException("No fue posible identificar el rostro.");
+            await gateway.RegisterFailedLoginAsync(null, "face-identification", "FACIAL", "Cuenta no habilitada", ct);
+            throw new AppUnauthorizedException(publicError);
         }
 
-        EnsureBuyerCanLogin(buyer);
         await gateway.RegisterSuccessfulLoginAsync(buyer.IdUsuario, "face-identification", "FACIAL", ct);
-        return tokens.CreateBuyerToken(ToProfile(buyer));
+        return new FaceIdentifyLoginOutcome(tokens.CreateBuyerToken(ToProfile(buyer)), identification);
     }
 
     private static BuyerProfile ToProfile(BuyerAuthRecord x) => new(
@@ -338,13 +342,6 @@ public sealed class BuyerAuthService(
     {
         if (!buyer.Activo) throw new AppForbiddenException("La cuenta está inactiva.");
         if (buyer.Bloqueado) throw new AppForbiddenException("La cuenta está bloqueada.");
-    }
-
-    private static bool IsSupportedWhatsAppPhone(string phone)
-    {
-        var digits = new string(phone.Where(char.IsDigit).ToArray());
-        return digits.Length == 8 ||
-               (digits.Length == 11 && digits.StartsWith("502", StringComparison.Ordinal));
     }
 
     private static string NormalizeEmail(string email)

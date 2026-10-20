@@ -32,10 +32,10 @@ public sealed class BuyerProfileService(
             ?? throw new AppNotFoundException("Comprador no encontrado.");
         EnsureBuyerCanManageProfile(current);
 
-        var phone = ValidatePhone(request.Phone);
+        var notification = BuyerNotificationPreferenceCodes.Parse(request.NotificationPreferenceCode);
+        var phone = ValidatePhone(request.Phone, notification.WhatsApp);
         var nickname = ValidateNickname(request.Nickname);
         ValidateBirthDate(request.BirthDate);
-        var notification = BuyerNotificationPreferenceCodes.Parse(request.NotificationPreferenceCode);
 
         if (!string.Equals(phone, current.Telefono, StringComparison.Ordinal) &&
             await profiles.IsIdentifierInUseByOtherAsync(phone, buyerId, ct))
@@ -177,7 +177,7 @@ public sealed class BuyerProfileService(
             throw new AppForbiddenException("La cuenta está bloqueada.");
     }
 
-    private static string ValidatePhone(string? phone)
+    private static string ValidatePhone(string? phone, bool notifyByWhatsApp)
     {
         if (string.IsNullOrWhiteSpace(phone))
             throw new AppValidationException("El teléfono es obligatorio y no puede exceder 25 caracteres.");
@@ -185,6 +185,9 @@ public sealed class BuyerProfileService(
         var value = phone.Trim();
         if (value.Length > 25)
             throw new AppValidationException("El teléfono es obligatorio y no puede exceder 25 caracteres.");
+        if (notifyByWhatsApp && !GuatemalaPhoneNumber.TryNormalizeForWhatsApp(value, out _))
+            throw new AppValidationException(
+                "Para notificaciones por WhatsApp use 8 dígitos de Guatemala o 502 seguido de 8 dígitos.");
         return value;
     }
 

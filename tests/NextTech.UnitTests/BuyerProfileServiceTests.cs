@@ -53,6 +53,39 @@ public sealed class BuyerProfileServiceTests
     }
 
     [Fact]
+    public async Task Update_WithLocalEightDigitPhoneAndWhatsApp_KeepsStoredValue()
+    {
+        var passwords = new PasswordService();
+        var gateway = new StubGateway(ActiveBuyer(passwords.Hash("Current123")));
+        var repository = new StubProfileRepository(ProfileData());
+        var service = new BuyerProfileService(repository, gateway, passwords, new StubTokenService());
+
+        var result = await service.UpdateAsync(
+            46,
+            new UpdateBuyerProfileRequest("55550101", "buyer", null, "WHATSAPP"),
+            CancellationToken.None);
+
+        Assert.Equal("55550101", repository.LastUpdate?.Phone);
+        Assert.Equal("55550101", result.Profile.Phone);
+    }
+
+    [Fact]
+    public async Task Update_WithInvalidWhatsAppPhone_RejectsBeforePersistence()
+    {
+        var passwords = new PasswordService();
+        var gateway = new StubGateway(ActiveBuyer(passwords.Hash("Current123")));
+        var repository = new StubProfileRepository(ProfileData());
+        var service = new BuyerProfileService(repository, gateway, passwords, new StubTokenService());
+
+        await Assert.ThrowsAsync<AppValidationException>(() => service.UpdateAsync(
+            46,
+            new UpdateBuyerProfileRequest("50355550101", "buyer", null, "WHATSAPP"),
+            CancellationToken.None));
+
+        Assert.Null(repository.LastUpdate);
+    }
+
+    [Fact]
     public async Task Update_RejectsIdentifierOwnedByAnotherBuyer()
     {
         var passwords = new PasswordService();

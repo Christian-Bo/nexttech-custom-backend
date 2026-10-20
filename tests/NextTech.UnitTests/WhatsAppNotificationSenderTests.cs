@@ -37,6 +37,86 @@ public sealed class WhatsAppNotificationSenderTests
         Assert.Contains("nunca enviará tu contraseña", message);
     }
 
+    [Theory]
+    [InlineData("55550101")]
+    [InlineData("50255550101")]
+    [InlineData("+502 5555-0101")]
+    public async Task RegistrationWelcome_NormalizesGuatemalaNumberAtWhatsAppBoundary(string enteredPhone)
+    {
+        var handler = new RecordingHandler(HttpStatusCode.OK);
+        using var client = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://api-whatsapp.example/")
+        };
+        var sender = CreateSender(client, enabled: true);
+
+        await sender.SendRegistrationWelcomeAsync(
+            enteredPhone, "buyer@example.test", "buyer", CancellationToken.None);
+
+        using var json = JsonDocument.Parse(handler.Body!);
+        Assert.Equal("50255550101", json.RootElement.GetProperty("to").GetString());
+        Assert.Equal("/messages/text", handler.RequestUri?.AbsolutePath);
+    }
+
+    [Theory]
+    [InlineData("55550101")]
+    [InlineData("+502 5555-0101")]
+    public async Task CredentialDocument_NormalizesPhoneInMediaPayload(string enteredPhone)
+    {
+        var handler = new RecordingHandler(HttpStatusCode.OK);
+        using var client = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://api-whatsapp.example/")
+        };
+        var sender = CreateSender(client, enabled: true);
+        var credential = new BuyerCredentialDocument(
+            [1, 2, 3], "application/pdf", "credential.pdf", DateTimeOffset.UtcNow);
+
+        await sender.SendCredentialAsync(enteredPhone, "buyer", credential, CancellationToken.None);
+
+        using var json = JsonDocument.Parse(handler.Body!);
+        Assert.Equal("50255550101", json.RootElement.GetProperty("to").GetString());
+        Assert.Equal("/messages/media", handler.RequestUri?.AbsolutePath);
+    }
+
+    [Fact]
+    public async Task OrderNotifications_NormalizeLegacyBuyerPhone()
+    {
+        var handler = new RecordingHandler(HttpStatusCode.OK);
+        using var client = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://api-whatsapp.example/")
+        };
+        var sender = CreateSender(client, enabled: true);
+
+        var sent = await sender.SendOrderReadyAsync(
+            "55550101", "buyer", "NT-001", CancellationToken.None);
+
+        Assert.True(sent);
+        using var json = JsonDocument.Parse(handler.Body!);
+        Assert.Equal("50255550101", json.RootElement.GetProperty("to").GetString());
+    }
+
+    [Theory]
+    [InlineData("5555010")]
+    [InlineData("50355550101")]
+    [InlineData("55550101x")]
+    public async Task InvalidPhone_DoesNotCallWhatsAppProvider(string enteredPhone)
+    {
+        var handler = new RecordingHandler(HttpStatusCode.OK);
+        using var client = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://api-whatsapp.example/")
+        };
+        var sender = CreateSender(client, enabled: true);
+
+        var sent = await sender.SendOrderReadyAsync(
+            enteredPhone, "buyer", "NT-001", CancellationToken.None);
+
+        Assert.False(sent);
+        Assert.Null(handler.RequestUri);
+    }
+
     [Fact]
     public async Task CredentialDocument_UsesMediaEndpointAndBase64Payload()
     {

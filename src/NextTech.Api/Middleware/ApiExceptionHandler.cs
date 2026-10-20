@@ -58,6 +58,8 @@ public sealed class ApiExceptionHandler(
 
         problem.Extensions["traceId"] = context.TraceIdentifier;
         problem.Extensions["method"] = context.Request.Method;
+        if (exception is AppFaceIdentificationException { FaceApiTraceId: { } providerTraceId })
+            problem.Extensions["faceApiTraceId"] = providerTraceId;
 
         if (isDevelopment)
         {

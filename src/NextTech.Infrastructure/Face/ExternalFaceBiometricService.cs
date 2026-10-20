@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
@@ -176,11 +177,97 @@ public sealed class ExternalFaceBiometricService(
         FaceImageValidator.Validate(referenceImage);
 
         using var form = new MultipartFormDataContent();
-        form.Add(new StringContent(buyerId.ToString(CultureInfo.InvariantCulture)), "subjectId");
+        form.Add(new StringContent(buyerId.ToString(CultureInfo.InvariantCulture)), "subject_id");
         AddImage(form, ImageField, referenceImage);
 
         using var response = await client.PostAsync(_options.IdentityEnrollPath, form, ct);
         await EnsureSuccessAsync(response, "registro en la galería de identificación facial", ct);
+    }
+
+    public async Task<FaceQuickIdentificationResult> IdentifyAsync(FaceImage image, CancellationToken ct)
+    {
+        if (!_options.IdentificationEnabled)
+            throw new AppConflictException("El inicio de sesión facial rápido todavía no está habilitado.");
+
+        FaceImageValidator.Validate(image);
+        using var form = new MultipartFormDataContent();
+        AddImage(form, ImageField, image);
+
+        var timer = Stopwatch.StartNew();
+        using var response = await client.PostAsync(_options.IdentifyPath, form, ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            // The provider uses 401 for a legitimate non-match AND bad credentials.
+            // Never mistake an invalid integration key for a user authentication failure.
+            if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.UnprocessableEntity)
+            {
+                var problem = await TryReadIdentificationProblemAsync(response, ct);
+                if (response.StatusCode == HttpStatusCode.Unauthorized &&
+                    problem.Code == "FACE_NOT_IDENTIFIED")
+                    throw new AppFaceIdentificationException(
+                        "FACE_NOT_IDENTIFIED", "No fue posible autenticar mediante reconocimiento facial.",
+                        StatusCodes.Status401Unauthorized, problem.TraceId);
+
+                if (response.StatusCode == HttpStatusCode.UnprocessableEntity &&
+                    problem.Code == "FACE_IDENTIFICATION_AMBIGUOUS")
+                    throw new AppFaceIdentificationException(
+                        "FACE_IDENTIFICATION_AMBIGUOUS", "La identificación facial no fue concluyente.",
+                        StatusCodes.Status422UnprocessableEntity, problem.TraceId);
+
+                if (response.StatusCode == HttpStatusCode.UnprocessableEntity)
+                    throw new AppFaceIdentificationException(
+                        "FACE_IDENTIFICATION_REJECTED", "No fue posible procesar la identificación facial.",
+                        StatusCodes.Status422UnprocessableEntity, problem.TraceId);
+            }
+
+            await EnsureSuccessAsync(response, "identificación facial rápida", ct);
+        }
+
+        using var json = await ReadJsonAsync(response, "identificación facial rápida", ct);
+        var root = json.RootElement;
+        var identified = RequiredBoolean(root, "identified", "identificación facial rápida");
+        var processing = TryGetProperty(root, "processing", out var processingElement) &&
+                         processingElement.ValueKind == JsonValueKind.Object
+            ? processingElement
+            : default;
+        timer.Stop();
+
+        return new FaceQuickIdentificationResult(
+            identified,
+            OptionalString(root, "subjectId"),
+            OptionalDecimal(root, "similarity"),
+            OptionalDecimal(root, "threshold"),
+            OptionalDouble(processing, "totalMs"),
+            OptionalDouble(processing, "searchMs"),
+            OptionalDouble(processing, "embeddingMs"),
+            timer.Elapsed.TotalMilliseconds,
+            SafeTraceId(OptionalString(root, "traceId")));
+    }
+
+    private static string? SafeTraceId(string? value)
+        => value is { Length: > 0 and <= 128 } &&
+           value.All(static c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or ':')
+            ? value
+            : null;
+
+    private static async Task<(string? Code, string? TraceId)> TryReadIdentificationProblemAsync(
+        HttpResponseMessage response, CancellationToken ct)
+    {
+        try
+        {
+            // Never log, echo or trust arbitrary error details from an external provider.
+            var bytes = await response.Content.ReadAsByteArrayAsync(ct);
+            if (bytes.Length is 0 or > 16_384)
+                return (null, null);
+
+            using var json = JsonDocument.Parse(bytes);
+            return (OptionalString(json.RootElement, "code"),
+                    SafeTraceId(OptionalString(json.RootElement, "traceId")));
+        }
+        catch (JsonException)
+        {
+            return (null, null);
+        }
     }
 
     public async Task<FaceIdentificationResult> IdentifyLiveAsync(
@@ -202,7 +289,7 @@ public sealed class ExternalFaceBiometricService(
         AddImage(form, NeutralImageField, neutralImage);
         AddImage(form, ChallengeImageField, challengeImage);
 
-        using var response = await client.PostAsync(_options.IdentifyPath, form, ct);
+        using var response = await client.PostAsync(_options.IdentifyLivePath, form, ct);
         await EnsureSuccessAsync(response, "identificación facial directa con liveness", ct);
 
         using var json = await ReadJsonAsync(response, "identificación facial directa con liveness", ct);
@@ -430,6 +517,15 @@ public sealed class ExternalFaceBiometricService(
             return number;
 
         return null;
+    }
+
+    private static double? OptionalDouble(JsonElement parent, string name)
+    {
+        if (!TryGetProperty(parent, name, out var value) || value.ValueKind != JsonValueKind.Number)
+            return null;
+        return value.TryGetDouble(out var number) && double.IsFinite(number) && number >= 0
+            ? number
+            : null;
     }
 
     private static bool TryGetProperty(JsonElement element, string name, out JsonElement value)

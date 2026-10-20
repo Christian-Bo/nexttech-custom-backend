@@ -220,10 +220,127 @@ public sealed class FaceBiometricServiceTests
         FaceImageValidator.Validate(image);
     }
 
-    private static ExternalFaceBiometricService CreateService(HttpClient client)
+    [Fact]
+    public async Task IdentityEnroll_SendsSubjectIdInSnakeCaseAndOriginalImage()
+    {
+        using var client = CreateClient(async (request, ct) =>
+        {
+            Assert.Equal("/api/v1/faces/identity/enroll", request.RequestUri?.AbsolutePath);
+            var body = await request.Content!.ReadAsStringAsync(ct);
+            Assert.Contains("name=subject_id", body);
+            Assert.Contains("162", body);
+            Assert.Contains("name=image", body);
+            Assert.DoesNotContain("name=subjectId", body);
+            Assert.DoesNotContain("name=neutralImage", body);
+            return Json(HttpStatusCode.OK, """{"enrolled":true}""");
+        });
+
+        await CreateService(client, enabled: true).RegisterIdentityAsync(162, Image(), CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Identify_SendsOnlyImageAndParsesProviderTimings()
+    {
+        using var client = CreateClient(async (request, ct) =>
+        {
+            Assert.Equal("/api/v1/faces/identify", request.RequestUri?.AbsolutePath);
+            Assert.Equal(HttpMethod.Post, request.Method);
+            var form = await request.Content!.ReadAsStringAsync(ct);
+            Assert.Contains("name=image", form);
+            Assert.DoesNotContain("name=subject_id", form);
+            Assert.DoesNotContain("name=challengeId", form);
+            Assert.DoesNotContain("name=neutralImage", form);
+            Assert.DoesNotContain("name=challengeImage", form);
+            return Json(HttpStatusCode.OK, """
+            {"identified":true,"subjectId":"162","similarity":0.609870221,
+             "threshold":0.50,"livenessPassed":null,
+             "processing":{"embeddingMs":25,"searchMs":0.0225,"totalMs":328},
+             "traceId":"face-trace-123"}
+            """);
+        });
+
+        var result = await CreateService(client, enabled: true).IdentifyAsync(Image(), CancellationToken.None);
+
+        Assert.True(result.Identified);
+        Assert.Equal("162", result.SubjectId);
+        Assert.Equal(0.50m, result.Threshold);
+        Assert.Equal(328d, result.FaceApiProcessingMs.GetValueOrDefault());
+        Assert.Equal(0.0225d, result.FaceApiSearchMs.GetValueOrDefault());
+        Assert.Equal(25d, result.FaceApiEmbeddingMs.GetValueOrDefault());
+        Assert.True(result.FaceApiHttpMs >= 0);
+        Assert.Equal("face-trace-123", result.FaceApiTraceId);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized, "FACE_NOT_IDENTIFIED", 401)]
+    [InlineData(HttpStatusCode.UnprocessableEntity, "FACE_IDENTIFICATION_AMBIGUOUS", 422)]
+    public async Task Identify_ReturnsSafeProblemWithExpectedCode(
+        HttpStatusCode status, string code, int expectedStatus)
+    {
+        using var client = CreateClient((_, _) => Json(status,
+            $$"""{"code":"{{code}}","detail":"Internal candidate data","traceId":"face-123"}""",
+            "application/problem+json"));
+
+        var exception = await Assert.ThrowsAsync<AppFaceIdentificationException>(
+            () => CreateService(client, enabled: true).IdentifyAsync(Image(), CancellationToken.None));
+        Assert.Equal(expectedStatus, exception.StatusCode);
+        Assert.Equal(code, exception.ErrorCode);
+        Assert.DoesNotContain("candidate", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("face-123", exception.FaceApiTraceId);
+    }
+
+    [Fact]
+    public async Task Identify_InvalidProviderKey_IsDependencyFailureNotUnknownBuyer()
+    {
+        using var client = CreateClient((_, _) => Json(HttpStatusCode.Unauthorized,
+            """{"code":"INVALID_API_KEY"}""", "application/problem+json"));
+
+        await Assert.ThrowsAsync<AppDependencyException>(() =>
+            CreateService(client, enabled: true).IdentifyAsync(Image(), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Identify_Disabled_DoesNotCallFaceApi()
+    {
+        var called = false;
+        using var client = CreateClient((_, _) =>
+        {
+            called = true;
+            return Json(HttpStatusCode.OK, "{}");
+        });
+        await Assert.ThrowsAsync<AppConflictException>(() =>
+            CreateService(client).IdentifyAsync(Image(), CancellationToken.None));
+        Assert.False(called);
+    }
+
+    [Fact]
+    public async Task Identify_ForwardsCancellationToken()
+    {
+        using var client = CreateClient(async (_, ct) =>
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+            throw new InvalidOperationException("Should have cancelled");
+        });
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            CreateService(client, enabled: true).IdentifyAsync(Image(), cancellation.Token));
+    }
+
+    [Fact]
+    public async Task Identify_MalformedSuccessBody_FailsClosed()
+    {
+        using var client = CreateClient((_, _) => Json(HttpStatusCode.OK, """{"subjectId":"162"}"""));
+        await Assert.ThrowsAsync<AppDependencyException>(() =>
+            CreateService(client, enabled: true).IdentifyAsync(Image(), CancellationToken.None));
+    }
+
+    private static ExternalFaceBiometricService CreateService(HttpClient client, bool enabled = false)
         => new(client, Options.Create(new FaceApiOptions
         {
-            BaseUrl = "https://face.example.test"
+            BaseUrl = "https://face.example.test",
+            IdentificationEnabled = enabled
         }));
 
     private static FaceImage Image(string fileName = "face.jpg")
