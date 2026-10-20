@@ -102,6 +102,63 @@ public sealed class BuyerCredentialService(
         }
     }
 
+    // Envía el documento personalizado creado en el navegador sin emitir ni rotar el QR.
+    // El PDF solo se mantiene en memoria durante esta solicitud: no se persiste en Oracle.
+    public async Task<NotificationDispatchResult> SendPersonalizedAsync(
+        long buyerId,
+        string qrCredential,
+        byte[] pdfContent,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(qrCredential) || qrCredential.Length > 128 ||
+            !qrCredential.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_'))
+            throw new AppValidationException("El código QR no es válido.");
+
+        if (pdfContent is null || pdfContent.Length < 64 || pdfContent.Length > 8 * 1024 * 1024 ||
+            !pdfContent.AsSpan(0, 5).SequenceEqual("%PDF-"u8) ||
+            !Encoding.ASCII.GetString(pdfContent, Math.Max(0, pdfContent.Length - 2048),
+                Math.Min(2048, pdfContent.Length)).Contains("%%EOF", StringComparison.Ordinal))
+            throw new AppValidationException("El archivo debe ser un PDF válido de hasta 8 MB.");
+
+        var buyer = await GetActiveBuyerAsync(buyerId, ct);
+        _ = await GetEnrollmentAsync(buyerId, ct);
+
+        // Oracle guarda únicamente SHA-256 del código QR. Verificamos que sea
+        // el vigente de ESTE comprador antes de entregar un PDF con acceso.
+        var qrOwner = await gateway.FindByQrHashAsync(HashToken(qrCredential), ct);
+        if (qrOwner is null || qrOwner.IdUsuario != buyerId || !qrOwner.Activo || qrOwner.Bloqueado)
+            throw new AppForbiddenException("El QR ya no está vigente para esta cuenta.");
+
+        var channels = (Email: buyer.NotificaEmail, WhatsApp: buyer.NotificaWhatsApp);
+        if (!channels.Email && !channels.WhatsApp)
+            throw new AppConflictException("Activa al menos un canal de notificación en Mi cuenta.");
+        if (channels.Email && string.IsNullOrWhiteSpace(buyer.Correo))
+            throw new AppConflictException("La cuenta no tiene correo para recibir la credencial.");
+        if (channels.WhatsApp && string.IsNullOrWhiteSpace(buyer.Telefono))
+            throw new AppConflictException("La cuenta no tiene teléfono para recibir la credencial.");
+
+        var document = new BuyerCredentialDocument(
+            pdfContent,
+            "application/pdf",
+            $"credencial-nexttech-personalizada-{buyer.IdUsuario}.pdf",
+            DateTimeOffset.UtcNow);
+
+        // EXACTAMENTE los servicios actuales de SMTP y WhatsApp; sin nuevos proveedores.
+        if (channels.Email)
+            await notificationSender.SendCredentialAsync(buyer.Correo, buyer.Nickname, document, ct);
+        if (channels.WhatsApp)
+            await whatsAppNotifications.SendCredentialAsync(buyer.Telefono!, buyer.Nickname, document, ct);
+
+        var channel = channels switch
+        {
+            (true, true) => NotificationDeliveryChannels.EmailAndWhatsApp,
+            (true, false) => NotificationDeliveryChannels.Email,
+            _ => NotificationDeliveryChannels.WhatsApp
+        };
+        return new NotificationDispatchResult(channel,
+            "La solicitud de envío del PDF personalizado fue procesada. Verifica tus canales de notificación.");
+    }
+
     private async Task<BuyerCredentialDocument> IssueInternalAsync(
         long buyerId,
         (bool Email, bool WhatsApp)? requestedChannels,

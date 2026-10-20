@@ -14,7 +14,8 @@ namespace NextTech.Api.Controllers;
 [Route("api/supervisor/orders")]
 public sealed class SupervisorOrdersController(
     IOrderService orders,
-    ICurrentActor actor) : ControllerBase
+    ICurrentActor actor,
+    IConfiguration configuration) : ControllerBase
 {
     [HttpGet("in-production")]
     public async Task<IActionResult> EnElaboracion(CancellationToken cancellationToken)
@@ -68,6 +69,27 @@ public sealed class SupervisorOrdersController(
     {
         _ = actor.RequireIdUsuarioInterno();
         var produccion = await orders.ObtenerParaProduccionAsync(codigo, cancellationToken);
+
+        // El contenedor puede recibir HTTP desde el proxy que publica HTTPS.
+        // Configuramos un origen externo fijo para el chip, independiente de Request.Scheme.
+        // Si no se configura, conservamos el comportamiento existente (desarrollo local).
+        var publicBaseUrl = configuration["Nfc:PublicBaseUrl"];
+        if (!string.IsNullOrWhiteSpace(publicBaseUrl))
+        {
+            if (!Uri.TryCreate(publicBaseUrl.Trim(), UriKind.Absolute, out var publicOrigin) ||
+                !string.Equals(publicOrigin.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+                !string.IsNullOrEmpty(publicOrigin.UserInfo) ||
+                publicOrigin.AbsolutePath != "/" ||
+                !string.IsNullOrEmpty(publicOrigin.Query) ||
+                !string.IsNullOrEmpty(publicOrigin.Fragment))
+            {
+                throw new InvalidOperationException(
+                    "Nfc:PublicBaseUrl debe ser un origen HTTPS sin ruta, parámetros ni fragmento.");
+            }
+
+            return Ok(NfcWriteUrlMapper.Apply(produccion, publicOrigin.Scheme, publicOrigin.Authority));
+        }
+
         return Ok(NfcWriteUrlMapper.Apply(produccion, Request.Scheme, Request.Host.Value));
     }
 

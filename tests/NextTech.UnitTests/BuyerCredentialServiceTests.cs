@@ -142,6 +142,66 @@ public sealed class BuyerCredentialServiceTests
         Assert.Null(notifications.Document);
     }
 
+    [Fact]
+    public async Task SendPersonalized_UsesCurrentQrAndBothExistingChannelsWithoutRotation()
+    {
+        var gateway = new StubGateway(ActiveBuyer(notifyByEmail: true, notifyByWhatsApp: true));
+        const string raw = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+        var existingHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(raw))).ToLowerInvariant();
+        await gateway.SetQrHashAsync(21, existingHash, CancellationToken.None);
+        var notifications = new StubNotificationSender();
+        var whatsApp = new StubWhatsAppNotificationSender();
+        var generator = new StubPdfGenerator();
+        var service = new BuyerCredentialService(gateway, new StubEnrollmentStore(Enrollment()),
+            new StubCustomizationStore(), generator, notifications, whatsApp);
+        var bytes = ValidVisualPdf();
+
+        var result = await service.SendPersonalizedAsync(21, raw, bytes, CancellationToken.None);
+
+        Assert.Equal(NotificationDeliveryChannels.EmailAndWhatsApp, result.Channel);
+        Assert.NotNull(notifications.Document);
+        Assert.Same(notifications.Document, whatsApp.Document);
+        Assert.Same(bytes, notifications.Document!.Content);
+        Assert.Equal(existingHash, gateway.LastQrHash);
+        Assert.Null(generator.Data);
+    }
+
+    [Fact]
+    public async Task SendPersonalized_RejectsOldQrWithoutSendingOrChangingQr()
+    {
+        var gateway = new StubGateway(ActiveBuyer());
+        var notifications = new StubNotificationSender();
+        var whatsApp = new StubWhatsAppNotificationSender();
+        var service = new BuyerCredentialService(gateway, new StubEnrollmentStore(Enrollment()),
+            new StubCustomizationStore(), new StubPdfGenerator(), notifications, whatsApp);
+
+        await Assert.ThrowsAsync<AppForbiddenException>(() =>
+            service.SendPersonalizedAsync(21,
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", ValidVisualPdf(), CancellationToken.None));
+
+        Assert.Null(gateway.LastQrHash);
+        Assert.Null(notifications.Document);
+        Assert.Null(whatsApp.Document);
+    }
+
+    [Fact]
+    public async Task SendPersonalized_RejectsBadPdfBeforeSending()
+    {
+        var gateway = new StubGateway(ActiveBuyer());
+        var notifications = new StubNotificationSender();
+        var service = new BuyerCredentialService(gateway, new StubEnrollmentStore(Enrollment()),
+            new StubCustomizationStore(), new StubPdfGenerator(), notifications,
+            new StubWhatsAppNotificationSender());
+
+        await Assert.ThrowsAsync<AppValidationException>(() =>
+            service.SendPersonalizedAsync(21,
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", [1, 2, 3], CancellationToken.None));
+        Assert.Null(notifications.Document);
+    }
+
+    private static byte[] ValidVisualPdf() => Encoding.ASCII.GetBytes(
+        "%PDF-1.4\n" + new string(' ', 80) + "\n%%EOF\n");
+
     private static BuyerAuthRecord ActiveBuyer(
         bool notifyByEmail = true,
         bool notifyByWhatsApp = false,
@@ -324,7 +384,8 @@ public sealed class BuyerCredentialServiceTests
             => Task.FromResult<BuyerAuthRecord?>(idUsuario == buyer.IdUsuario ? buyer : null);
 
         public Task<BuyerAuthRecord?> FindByQrHashAsync(string qrHash, CancellationToken ct)
-            => Task.FromResult<BuyerAuthRecord?>(null);
+            => Task.FromResult<BuyerAuthRecord?>(
+                string.Equals(qrHash, LastQrHash, StringComparison.Ordinal) ? buyer : null);
 
         public Task<long> RegisterAsync(BuyerRegistrationData data, CancellationToken ct)
             => throw new NotSupportedException();
