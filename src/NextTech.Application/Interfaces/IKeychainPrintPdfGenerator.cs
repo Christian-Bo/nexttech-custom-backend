@@ -12,7 +12,9 @@ public sealed record KeychainPrintOrder(
     string NicknameComprador,
     IReadOnlyList<KeychainPrintItem> Items);
 
-public sealed record KeychainPrintPdfData(IReadOnlyList<KeychainPrintOrder> Ordenes);
+public sealed record KeychainPrintPdfData(
+    IReadOnlyList<KeychainPrintOrder> Ordenes,
+    string? Papel = null);
 
 public interface IKeychainPrintPdfGenerator
 {

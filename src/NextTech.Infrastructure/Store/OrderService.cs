@@ -1079,11 +1079,13 @@ public sealed class OrderService(
 
     public Task<ArchivoDescargaDto> ObtenerHojaImpresionAsync(
         string codigoOrden,
+        string? papel,
         CancellationToken cancellationToken)
-        => ObtenerHojaImpresionLoteAsync([codigoOrden], cancellationToken);
+        => ObtenerHojaImpresionLoteAsync([codigoOrden], papel, cancellationToken);
 
     public async Task<ArchivoDescargaDto> ObtenerHojaImpresionLoteAsync(
         IReadOnlyList<string>? codigos,
+        string? papel,
         CancellationToken cancellationToken)
     {
         const int maxLote = 50;
@@ -1130,7 +1132,7 @@ public sealed class OrderService(
             throw new BusinessRuleException("No hay diseños de Lado A y Lado B para imprimir.");
         }
 
-        var documento = printPdf.Generate(new KeychainPrintPdfData(ordenes));
+        var documento = printPdf.Generate(new KeychainPrintPdfData(ordenes, papel));
         return new ArchivoDescargaDto(documento.Content, documento.ContentType, documento.FileName);
     }
 

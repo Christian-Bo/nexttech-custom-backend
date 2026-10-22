@@ -32,10 +32,12 @@ public sealed class SupervisorOrdersController(
     [HttpGet("print-queue")]
     [Produces("application/pdf")]
     [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
-    public async Task<IActionResult> ImprimirCola(CancellationToken cancellationToken)
+    public async Task<IActionResult> ImprimirCola(
+        [FromQuery] string? papel,
+        CancellationToken cancellationToken)
     {
         _ = actor.RequireIdUsuarioInterno();
-        var archivo = await orders.ObtenerHojaImpresionLoteAsync(null, cancellationToken);
+        var archivo = await orders.ObtenerHojaImpresionLoteAsync(null, papel, cancellationToken);
         Response.Headers.CacheControl = "no-store";
         return File(archivo.Datos, archivo.TipoMime, archivo.NombreOriginal);
     }
@@ -48,7 +50,10 @@ public sealed class SupervisorOrdersController(
         CancellationToken cancellationToken)
     {
         _ = actor.RequireIdUsuarioInterno();
-        var archivo = await orders.ObtenerHojaImpresionLoteAsync(request?.Codigos, cancellationToken);
+        var archivo = await orders.ObtenerHojaImpresionLoteAsync(
+            request?.Codigos,
+            request?.Papel,
+            cancellationToken);
         Response.Headers.CacheControl = "no-store";
         return File(archivo.Datos, archivo.TipoMime, archivo.NombreOriginal);
     }
@@ -96,10 +101,13 @@ public sealed class SupervisorOrdersController(
     [HttpGet("{codigo}/print")]
     [Produces("application/pdf")]
     [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
-    public async Task<IActionResult> HojaImpresion(string codigo, CancellationToken cancellationToken)
+    public async Task<IActionResult> HojaImpresion(
+        string codigo,
+        [FromQuery] string? papel,
+        CancellationToken cancellationToken)
     {
         _ = actor.RequireIdUsuarioInterno();
-        var archivo = await orders.ObtenerHojaImpresionAsync(codigo, cancellationToken);
+        var archivo = await orders.ObtenerHojaImpresionAsync(codigo, papel, cancellationToken);
         Response.Headers.CacheControl = "no-store";
         return File(archivo.Datos, archivo.TipoMime, archivo.NombreOriginal);
     }
