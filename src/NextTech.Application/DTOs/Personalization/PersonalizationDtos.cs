@@ -2,8 +2,8 @@ namespace NextTech.Application.DTOs.Personalization;
 
 public sealed record CrearPersonalizacionRequest(
     int IdVariante,
-    string? NfcUrl,
-    IReadOnlyList<ZonaPersonalizacionRequest> Zonas);
+    IReadOnlyList<ZonaPersonalizacionRequest> Zonas,
+    string? NfcUrl = null);
 
 public sealed record ZonaPersonalizacionRequest(
     int IdZona,
