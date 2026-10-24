@@ -24,7 +24,13 @@ public static class NfcUrlValidator
             throw new BusinessRuleException(MensajeDemasiadoLarga);
         }
 
-        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri) ||
+        var candidata = CompletarHttps(trimmed);
+        if (candidata.Length > MaxLength)
+        {
+            throw new BusinessRuleException(MensajeDemasiadoLarga);
+        }
+
+        if (!Uri.TryCreate(candidata, UriKind.Absolute, out var uri) ||
             !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
             string.IsNullOrWhiteSpace(uri.Host) ||
             !string.IsNullOrEmpty(uri.UserInfo))
@@ -33,5 +39,37 @@ public static class NfcUrlValidator
         }
 
         return uri.GetLeftPart(UriPartial.Query);
+    }
+
+    private static string CompletarHttps(string trimmed)
+    {
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var uri) &&
+            !string.IsNullOrWhiteSpace(uri.Scheme))
+        {
+            if (string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            {
+                return trimmed;
+            }
+
+            if (string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase))
+            {
+                var separador = trimmed.IndexOf("://", StringComparison.Ordinal);
+                if (separador < 0)
+                {
+                    throw new BusinessRuleException(MensajeObligatoria);
+                }
+
+                return "https://" + trimmed[(separador + 3)..];
+            }
+
+            throw new BusinessRuleException(MensajeObligatoria);
+        }
+
+        if (trimmed.Contains("://", StringComparison.Ordinal))
+        {
+            throw new BusinessRuleException(MensajeObligatoria);
+        }
+
+        return "https://" + trimmed.TrimStart('/');
     }
 }

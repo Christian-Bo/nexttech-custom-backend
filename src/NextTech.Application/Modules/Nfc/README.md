@@ -24,7 +24,7 @@ No hay `ALTER`. El destino vive en `PersonalizacionZona.ConfiguracionJson` como 
 }
 ```
 
-Si falta o no es `https`: **400** `La URL del NFC debe ser un enlace https válido.`
+Si falta el esquema (`www.google.com`) o viene `http://`, el API lo guarda como `https://`. Si no es un enlace válido: **400** `La URL del NFC debe ser un enlace https válido.`
 
 Si supera 2048 caracteres: **400** `La URL del NFC es demasiado larga. Usa un enlace más corto (máximo 2048 caracteres).`
 
