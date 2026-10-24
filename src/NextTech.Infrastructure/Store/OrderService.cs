@@ -1181,7 +1181,8 @@ public sealed class OrderService(
             throw new NotFoundException("Este pedido no tiene un enlace NFC.");
         }
 
-        return NfcUrlValidator.Normalizar(destino);
+        return NfcUrlValidator.Normalizar(destino)
+            ?? throw new NotFoundException("Este pedido no tiene un enlace NFC.");
     }
 
     public async Task<ArchivoDescargaDto> ObtenerArchivoProduccionAsync(

@@ -11,11 +11,11 @@ public static class NfcUrlValidator
     public const string MensajeDemasiadoLarga =
         "La URL del NFC es demasiado larga. Usa un enlace más corto (máximo 2048 caracteres).";
 
-    public static string Normalizar(string? nfcUrl)
+    public static string? Normalizar(string? nfcUrl)
     {
         if (string.IsNullOrWhiteSpace(nfcUrl))
         {
-            throw new BusinessRuleException(MensajeObligatoria);
+            return null;
         }
 
         var trimmed = nfcUrl.Trim();
