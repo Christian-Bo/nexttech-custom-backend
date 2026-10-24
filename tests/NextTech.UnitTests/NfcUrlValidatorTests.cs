@@ -41,6 +41,12 @@ public sealed class NfcUrlValidatorTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
+    public void Normalizar_EmptyIsOptional(string? url)
+    {
+        Assert.Null(NfcUrlValidator.Normalizar(url));
+    }
+
+    [Theory]
     [InlineData("javascript:alert(1)")]
     [InlineData("ftp://files.example/a")]
     [InlineData("https://user:pass@example.com/secret")]

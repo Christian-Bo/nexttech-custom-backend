@@ -6,7 +6,7 @@ No hay `ALTER`. El destino vive en `PersonalizacionZona.ConfiguracionJson` como 
 
 ## Comprador: guardar el destino
 
-`POST /api/personalizations` (JWT comprador) ahora exige `nfcUrl`:
+`POST /api/personalizations` (JWT comprador): `nfcUrl` es **opcional**. Lado A y Lado B siguen siendo obligatorios. Si no mandan enlace, el llavero se imprime igual y el taller no graba NFC.
 
 ```json
 {
@@ -36,10 +36,10 @@ Lista (igual que ahora): `GET /api/supervisor/orders/in-production`
 
 Detalle: `GET /api/supervisor/orders/{codigo}` ahora incluye:
 
-- `nfcUrl` — lo que pegó el cliente (solo para confirmar)
+- `nfcUrl` — lo que pegó el cliente (solo para confirmar); `null` si no pidió NFC
 - `nfcWriteUrl` — **esto** se escribe en la etiqueta, p. ej. `https://nexttech.136-113-48-173.sslip.io/n/ORD-656E6098`
 
-También van en cada `items[]`.
+Si `nfcWriteUrl` es `null`, no mostrar **Grabar NFC**. También van en cada `items[]`.
 
 Pantalla sugerida (Android, **Chrome o Edge**, HTTPS):
 

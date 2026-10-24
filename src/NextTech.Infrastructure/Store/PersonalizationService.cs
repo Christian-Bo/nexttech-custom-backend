@@ -81,7 +81,9 @@ public sealed class PersonalizationService(NextTechDbContext db) : IPersonalizat
             foreach (var zona in request.Zonas)
             {
                 PersonalizationJsonValidator.Validar(zona.ConfiguracionJson);
-                var configuracionJson = NfcUrlJson.Inyectar(zona.ConfiguracionJson, nfcUrl);
+                var configuracionJson = nfcUrl is null
+                    ? zona.ConfiguracionJson
+                    : NfcUrlJson.Inyectar(zona.ConfiguracionJson, nfcUrl);
 
                 var imagen = ImagePayloadParser.Parse(
                     zona.ImagenBase64,
