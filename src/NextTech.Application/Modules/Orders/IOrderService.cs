@@ -94,10 +94,12 @@ public interface IOrderService
 
     Task<ArchivoDescargaDto> ObtenerHojaImpresionAsync(
         string codigoOrden,
+        string? papel,
         CancellationToken cancellationToken);
 
     Task<ArchivoDescargaDto> ObtenerHojaImpresionLoteAsync(
         IReadOnlyList<string>? codigos,
+        string? papel,
         CancellationToken cancellationToken);
 
     Task<ArchivoDescargaDto> ObtenerArchivoProduccionAsync(

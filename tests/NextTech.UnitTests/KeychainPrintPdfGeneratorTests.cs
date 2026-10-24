@@ -1,4 +1,5 @@
 using System.Text;
+using NextTech.Application.Common;
 using NextTech.Application.Interfaces;
 using NextTech.Domain.Enums;
 using NextTech.Infrastructure.Pdf;
@@ -12,21 +13,57 @@ public sealed class KeychainPrintPdfGeneratorTests
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
 
     [Fact]
-    public void Layout_LadoAyBCabenEnA4ConMargenDeImpresora()
+    public void Layout_DiezPorQuinceEsElPapelPorDefectoYCabeUnLlavero()
     {
+        var hoja = KeychainPrintSheetLayout.Parse(null);
         Assert.Equal(1.6m, LlaveroMedidas.DiametroPulgadas);
         Assert.Equal(40.64m, LlaveroMedidas.DiametroMm);
-        Assert.True(KeychainPrintSheetLayout.CabeParDeLadosEnElAncho);
-        Assert.True(KeychainPrintSheetLayout.CabeFilasEnElAlto);
-        Assert.True(KeychainPrintSheetLayout.AnchoUtilMm - KeychainPrintSheetLayout.AnchoParLadosMm >= 20f);
-        Assert.True(KeychainPrintSheetLayout.AltoCuerpoMm - (KeychainPrintSheetLayout.LlaverosPorHoja * KeychainPrintSheetLayout.AltoFilaMm) >= 8f);
-        Assert.True(KeychainPrintSheetLayout.SeparacionLadosMm >= 24f);
-        Assert.True(KeychainPrintSheetLayout.DistanciaVerticalEntreCirculosMm >= 30f);
-        Assert.Equal(3, KeychainPrintSheetLayout.LlaverosPorHoja);
+        Assert.Equal("10x15", hoja.Codigo);
+        Assert.Equal(150f, hoja.AnchoHojaMm);
+        Assert.Equal(100f, hoja.AltoHojaMm);
+        Assert.True(hoja.CabeParDeLadosEnElAncho);
+        Assert.True(hoja.CabeFilasEnElAlto);
+        Assert.Equal(1, hoja.LlaverosPorHoja);
+        Assert.Equal(10f, hoja.SeparacionLadosMm);
+    }
+
+    [Theory]
+    [InlineData("13x18", "13x18")]
+    [InlineData("5x7", "5x7")]
+    [InlineData("a5", "a5")]
+    [InlineData("letter", "letter")]
+    [InlineData("carta", "letter")]
+    [InlineData("8x10", "8x10")]
+    public void Layout_PapelesComunes_MantienenSeparacionDeCorte(string papel, string codigo)
+    {
+        var hoja = KeychainPrintSheetLayout.Parse(papel);
+        Assert.Equal(codigo, hoja.Codigo);
+        Assert.Equal(KeychainPrintSheetLayout.SeparacionCorteMm, hoja.SeparacionLadosMm);
+        Assert.Equal(KeychainPrintSheetLayout.SeparacionCorteMm, hoja.SeparacionFilaMm);
+        Assert.True(hoja.CabeParDeLadosEnElAncho);
+        Assert.True(hoja.CabeFilasEnElAlto);
+        Assert.True(hoja.LlaverosPorHoja >= 1);
     }
 
     [Fact]
-    public void Generate_CreatesPdfForOneOrder()
+    public void Layout_A4EmpacaVariosLlaverosSinEncabezado()
+    {
+        var hoja = KeychainPrintSheetLayout.Parse("a4");
+        Assert.Equal("a4", hoja.Codigo);
+        Assert.True(hoja.CabeParDeLadosEnElAncho);
+        Assert.True(hoja.CabeFilasEnElAlto);
+        Assert.InRange(hoja.LlaverosPorHoja, 4, 8);
+    }
+
+    [Fact]
+    public void Layout_PapelInvalido_Lanza400()
+    {
+        var error = Assert.Throws<AppValidationException>(() => KeychainPrintSheetLayout.Parse("oficio"));
+        Assert.Contains("10x15", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Generate_CreatesPdfForOneOrderOn10x15()
     {
         QuestPDF.Settings.License = LicenseType.Community;
         var generator = new KeychainPrintPdfGenerator();
@@ -48,13 +85,13 @@ public sealed class KeychainPrintPdfGeneratorTests
         ]));
 
         Assert.Equal("application/pdf", document.ContentType);
-        Assert.Equal("impresion-ORD-PRINT01.pdf", document.FileName);
+        Assert.Equal("impresion-ORD-PRINT01-10x15.pdf", document.FileName);
         Assert.True(document.Content.Length > 500);
         Assert.Equal("%PDF", Encoding.ASCII.GetString(document.Content, 0, 4));
     }
 
     [Fact]
-    public void Generate_CreatesSinglePdfForSeveralKeychains()
+    public void Generate_CreatesSinglePdfForSeveralKeychainsOnA4()
     {
         QuestPDF.Settings.License = LicenseType.Community;
         var generator = new KeychainPrintPdfGenerator();
@@ -65,12 +102,11 @@ public sealed class KeychainPrintPdfGeneratorTests
             Pedido("ORD-B", "rodrigo"),
             Pedido("ORD-C", "maria"),
             Pedido("ORD-D", "jose")
-        ]));
+        ], "a4"));
 
-        Assert.Equal("impresion-lote-4-llaveros.pdf", document.FileName);
+        Assert.Equal("impresion-lote-4-llaveros-a4.pdf", document.FileName);
         Assert.True(document.Content.Length > 500);
         Assert.Equal("%PDF", Encoding.ASCII.GetString(document.Content, 0, 4));
-        Assert.Equal(3, KeychainPrintSheetLayout.LlaverosPorHoja);
     }
 
     private static KeychainPrintOrder Pedido(string codigo, string nickname)

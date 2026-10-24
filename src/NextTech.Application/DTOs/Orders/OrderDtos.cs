@@ -115,7 +115,9 @@ public sealed record OrdenProduccionDto(
     string? NfcUrl,
     string? NfcWriteUrl);
 
-public sealed record ImprimirLoteRequest(IReadOnlyList<string>? Codigos);
+public sealed record ImprimirLoteRequest(
+    IReadOnlyList<string>? Codigos,
+    string? Papel = null);
 
 public sealed record ArchivoDescargaDto(
     byte[] Datos,

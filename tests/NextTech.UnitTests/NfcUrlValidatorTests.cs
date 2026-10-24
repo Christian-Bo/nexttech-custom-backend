@@ -17,6 +17,18 @@ public sealed class NfcUrlValidatorTests
         Assert.Contains("://", normalizada);
     }
 
+    [Theory]
+    [InlineData("www.google.com", "https://www.google.com/")]
+    [InlineData("google.com", "https://google.com/")]
+    [InlineData("http://www.google.com", "https://www.google.com/")]
+    [InlineData("http://open.spotify.com/playlist/abc", "https://open.spotify.com/playlist/abc")]
+    public void Normalizar_CompletaHttpsCuandoFalta(string entrada, string esperada)
+    {
+        var normalizada = NfcUrlValidator.Normalizar(entrada);
+
+        Assert.Equal(esperada, normalizada);
+    }
+
     [Fact]
     public void Normalizar_TrimsWhitespace()
     {
@@ -29,7 +41,6 @@ public sealed class NfcUrlValidatorTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    [InlineData("http://open.spotify.com/playlist/abc")]
     [InlineData("javascript:alert(1)")]
     [InlineData("ftp://files.example/a")]
     [InlineData("https://user:pass@example.com/secret")]

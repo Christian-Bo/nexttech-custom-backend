@@ -112,11 +112,13 @@ internal sealed class IntegrationOrderServiceStub : IOrderService
 
     public Task<ArchivoDescargaDto> ObtenerHojaImpresionAsync(
         string codigoOrden,
+        string? papel,
         CancellationToken cancellationToken)
         => Unsupported<ArchivoDescargaDto>();
 
     public Task<ArchivoDescargaDto> ObtenerHojaImpresionLoteAsync(
         IReadOnlyList<string>? codigos,
+        string? papel,
         CancellationToken cancellationToken)
         => Unsupported<ArchivoDescargaDto>();
 
